@@ -1,0 +1,1 @@
+py -m PyInstaller --name "gestion_licitaciones_db" --onefile --windowed --clean --collect-submodules=app.ui.theme --hidden-import=matplotlib.backends.backend_qtagg --hidden-import=qtawesome --add-data "app/resources/icons;resources/icons" app/main.py
