@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
     QLabel
 )
 from PyQt6.QtCore import Qt, QModelIndex
-from PyQt6.QtGui import QIcon, QColor
+from PyQt6.QtGui import QIcon, QColor, QFont
 
 from app.core.models import Licitacion, Lote
 from app.core.db_adapter import DatabaseAdapter
@@ -47,9 +47,12 @@ class TabLotes(QWidget):
         self.db = db
         self.parent_window = parent_window
 
-        self.color_ahorro = QColor(220, 255, 220)
-        self.color_perdida = QColor(255, 220, 220)
+        # Titanium Construct colors for lotes highlighting
+        self.color_ahorro = QColor("#D1FAE5")    # Success green for savings
+        self.color_perdida = QColor("#FEF2F2")   # Danger red for loss
         self.color_default = QColor(Qt.GlobalColor.white)
+        self.color_nuestra = QColor("#EEF2FF")   # Indigo for our company
+        self.text_nuestra = QColor("#4F46E5")    # Indigo text
 
         print("[DEBUG][TabLotes] __init__ - empresas_nuestras en licitación:",
               getattr(self.licitacion, "empresas_nuestras", []))
@@ -202,6 +205,16 @@ class TabLotes(QWidget):
                 self._color_percentage_cell(self.table_lotes.item(row, self.COL_DIF_PERS), dif_pers_val)
 
                 self._set_item(row, self.COL_EMPRESA, lote.empresa_nuestra or "")
+                
+                # Highlight rows where we have "our company" assigned
+                if lote.empresa_nuestra:
+                    font_bold = QFont()
+                    font_bold.setBold(True)
+                    for c in range(self.table_lotes.columnCount()):
+                        if self.table_lotes.item(row, c):
+                            self.table_lotes.item(row, c).setBackground(self.color_nuestra)
+                            self.table_lotes.item(row, c).setForeground(self.text_nuestra)
+                            self.table_lotes.item(row, c).setFont(font_bold)
 
             self.table_lotes.resizeColumnsToContents()
             self.table_lotes.horizontalHeader().setSectionResizeMode(self.COL_NOMBRE, QHeaderView.ResizeMode.Stretch)
