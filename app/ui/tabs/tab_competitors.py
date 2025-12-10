@@ -62,9 +62,14 @@ class TabCompetitors(QWidget):
     COL_OFERTA_MONTO = 2
     COL_OFERTA_ADJUDICADA = 3
 
-    # Color para fila ganadora
-    COLOR_GANADOR = QColor("#d4edda")  # Verde claro
+    # Titanium Construct colors for offer highlighting
+    COLOR_GANADOR = QColor("#D1FAE5")      # Success green for winner
     BRUSH_GANADOR = QBrush(COLOR_GANADOR)
+    TEXT_GANADOR = QColor("#065F46")       # Dark green text
+    
+    COLOR_NUESTRA = QColor("#EEF2FF")      # Indigo for our company
+    BRUSH_NUESTRA = QBrush(COLOR_NUESTRA)
+    TEXT_NUESTRA = QColor("#4F46E5")       # Indigo text
 
     def __init__(self, licitacion: Licitacion, db: DatabaseAdapter, parent_window: LicitationDetailsWindow):
         super().__init__(parent_window)
@@ -168,6 +173,7 @@ class TabCompetitors(QWidget):
         self.btn_edit_comp.setIcon(icons_left['edit'])
         self.btn_del_comp = QPushButton(" Eliminar")
         self.btn_del_comp.setIcon(icons_left['delete'])
+        self.btn_del_comp.setProperty("class", "danger")  # Mark as danger action
         btn_analizar_paq = QPushButton(" Analizar Paquetes...")
         btn_analizar_paq.setIcon(icons_left['analyze_pkg'])
         btn_grid_comp.addWidget(self.btn_edit_comp, 1, 0)
@@ -179,6 +185,7 @@ class TabCompetitors(QWidget):
         btn_edit_params.setIcon(icons_left['edit_params'])
         btn_ejecutar_eval = QPushButton(" Ejecutar Evaluación")
         btn_ejecutar_eval.setIcon(icons_left['run_eval'])
+        btn_ejecutar_eval.setProperty("class", "primary")  # Mark as primary action
         btn_analizar_fasea = QPushButton(" Análisis de Fallas Fase A…")
         # Usa icono nativo; si manejas un dict icons_left, puedes cambiar esta línea por icons_left['analyze_fail']
         btn_analizar_fasea.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxWarning))
@@ -253,6 +260,7 @@ class TabCompetitors(QWidget):
         self.btn_edit_oferta.setIcon(icons_right['edit'])
         self.btn_del_oferta = QPushButton(" Eliminar Oferta")
         self.btn_del_oferta.setIcon(icons_right['delete'])
+        self.btn_del_oferta.setProperty("class", "danger")  # Mark as danger action
 
         btn_layout_ofertas.addWidget(self.btn_add_oferta)
         btn_layout_ofertas.addWidget(self.btn_edit_oferta)
@@ -417,6 +425,7 @@ class TabCompetitors(QWidget):
 
         if is_ganador:
             item.setBackground(self.BRUSH_GANADOR)
+            item.setForeground(self.TEXT_GANADOR)
             if bold:
                 item.setFont(bold)
 

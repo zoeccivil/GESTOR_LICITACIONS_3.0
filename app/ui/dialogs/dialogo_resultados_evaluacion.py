@@ -14,8 +14,14 @@ from PyQt6.QtGui import QColor, QBrush, QFont, QIcon
 from app.core.models import Licitacion
 from app.core.reporting.report_generator import ReportGenerator, REPORTLAB_AVAILABLE, OPENPYXL_AVAILABLE
 
-GREEN_BG = QBrush(QColor("#D4EDDA"))
-GREEN_BG_2 = QBrush(QColor("#C8F7C5"))
+# Titanium Construct color palette for evaluation results
+GREEN_BG = QBrush(QColor("#D1FAE5"))      # Success background (winner)
+GREEN_TEXT = QColor("#065F46")             # Success text (winner)
+INDIGO_BG = QBrush(QColor("#EEF2FF"))     # Info background (our company)
+INDIGO_TEXT = QColor("#4F46E5")            # Info text (our company)
+RED_BG = QBrush(QColor("#FEF2F2"))        # Danger background (disqualified)
+RED_TEXT = QColor("#DC2626")               # Danger text (disqualified)
+
 FONT_BOLD = QFont()
 FONT_BOLD.setBold(True)
 
@@ -126,10 +132,12 @@ class DialogoResultadosEvaluacion(QDialog):
         btns = QDialogButtonBox()
         self.btn_export_pdf = btns.addButton("Exportar a PDF", QDialogButtonBox.ButtonRole.ActionRole)
         self.btn_export_pdf.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton))
+        self.btn_export_pdf.setProperty("class", "primary")
         self.btn_export_xlsx: Optional[QPushButton] = None
         if OPENPYXL_AVAILABLE:
             self.btn_export_xlsx = btns.addButton("Exportar a Excel", QDialogButtonBox.ButtonRole.ActionRole)
             self.btn_export_xlsx.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView))
+            self.btn_export_xlsx.setProperty("class", "primary")
             self.btn_export_xlsx.clicked.connect(lambda: self._exportar("xlsx"))
         close_btn = btns.addButton("Cerrar", QDialogButtonBox.ButtonRole.RejectRole)
         close_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogCloseButton))
@@ -290,13 +298,27 @@ class DialogoResultadosEvaluacion(QDialog):
                           lote_num in self.adjudicados and
                           self.adjudicados[lote_num] == participante)
             is_winner = bool(res.get("es_ganador")) or (pos == 1 and califica)
-            if es_adj:
+            
+            # Check if it's our company
+            is_nuestra = "⚑" in participante or "➡️" in participante
+            
+            # Check if disqualified
+            is_disqualified = not califica or (ya_desc_base or ya_desc_sim)
+            
+            # Apply colors based on status (priority: disqualified > our company > winner)
+            if is_disqualified:
                 for c in range(table.columnCount()):
-                    table.item(row, c).setBackground(GREEN_BG_2)
+                    table.item(row, c).setBackground(RED_BG)
+                    table.item(row, c).setForeground(RED_TEXT)
+            elif is_nuestra:
+                for c in range(table.columnCount()):
+                    table.item(row, c).setBackground(INDIGO_BG)
+                    table.item(row, c).setForeground(INDIGO_TEXT)
                     table.item(row, c).setFont(FONT_BOLD)
-            elif is_winner:
+            elif is_winner or es_adj:
                 for c in range(table.columnCount()):
                     table.item(row, c).setBackground(GREEN_BG)
+                    table.item(row, c).setForeground(GREEN_TEXT)
                     table.item(row, c).setFont(FONT_BOLD)
 
         table.blockSignals(False)

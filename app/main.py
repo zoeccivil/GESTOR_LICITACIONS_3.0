@@ -14,6 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.ui.windows.main_window import MainWindow
+from app.ui.theme.titanium_theme import apply_titanium_theme
 
 
 def _initialize_firebase() -> Optional[object]:
@@ -71,6 +72,9 @@ def main() -> None:
     # Iniciar la aplicación PyQt6
     app = QApplication(sys.argv)
     app.setApplicationName("Gestor de Licitaciones (PyQt6)")
+    
+    # Apply Titanium Construct theme globally
+    apply_titanium_theme(app)
 
     window = MainWindow(db_client=db_client)
     window.show()

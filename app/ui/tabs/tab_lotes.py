@@ -119,6 +119,7 @@ class TabLotes(QWidget):
         self.btn_eliminar = QPushButton(" Eliminar Lote")
         self.btn_eliminar.setIcon(icon_del)
         self.btn_eliminar.setToolTip("Eliminar el lote seleccionado de esta licitación")
+        self.btn_eliminar.setProperty("class", "danger")  # Mark as danger action
 
         button_layout.addWidget(self.btn_agregar)
         button_layout.addWidget(self.btn_editar)

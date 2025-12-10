@@ -78,10 +78,8 @@ class MainWindow(QMainWindow):
     def __init__(self, db_client=None, parent=None):
         super().__init__(parent)
 
-        app = QApplication.instance()
-        if app is not None:
-            # Aplica el tema guardado (o dim_theme por defecto)
-            apply_theme_from_settings(app, fallback="dim_theme")
+        # Note: Theme is now applied globally in main.py using Titanium Construct
+        # The old theme system has been disabled
 
         self.db: DatabaseAdapter | None = None
         self._settings = QSettings("Zoeccivil", "Licitaciones")
@@ -149,10 +147,11 @@ class MainWindow(QMainWindow):
         m_archivo.addSeparator()
         self.act_salir = m_archivo.addAction("Salir", self.close)
 
-        # Ver (conmutador de tema)
+        # Ver menu (theme menu disabled - using Titanium Construct exclusively)
         m_ver = menubar.addMenu("Ver")
-        self._menu_tema = m_ver.addMenu("Tema")
-        self._build_theme_menu()
+        # Theme switching disabled - now using Titanium Construct theme exclusively
+        # self._menu_tema = m_ver.addMenu("Tema")
+        # self._build_theme_menu()
 
         # Dashboards
         m_dashboards = menubar.addMenu("Dashboards")
@@ -235,6 +234,7 @@ class MainWindow(QMainWindow):
         self.btn_nueva_lic = QPushButton(" Nueva Licitación")
         self.btn_nueva_lic.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_FileIcon))
         self.btn_nueva_lic.setToolTip("Crear una nueva licitación")
+        self.btn_nueva_lic.setProperty("class", "primary")
         self.btn_nueva_lic.clicked.connect(self._accion_nueva_licitacion)
         tb.addWidget(self.btn_nueva_lic)
 
