@@ -131,7 +131,7 @@ class MainWindow(QMainWindow):
         
         lbl = QLabel(message)
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl.setStyleSheet("font-size: 16px; color: gray;")
+        lbl.setStyleSheet("font-size: 16px; color: #6B7280;")  # Neutral-500 from Titanium
         layout.addWidget(lbl)
         self.setCentralWidget(self.welcome)
 

@@ -166,12 +166,13 @@ class DashboardWindow(QWidget):
         self.nextDueArea.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.nextDueArea.setTextFormat(Qt.TextFormat.RichText)
         self.nextDueArea.setStyleSheet("""
-            background: #e3f2fd;
-            color: #263238;
+            background: #EEF2FF;
+            color: #374151;
             padding: 16px;
             border-radius: 7px;
             font-size: 13px;
             font-weight: 500;
+            border: 1px solid #D1D5DB;
         """)
         self.nextDueArea.setMinimumHeight(60)
 
