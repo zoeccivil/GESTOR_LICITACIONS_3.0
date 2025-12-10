@@ -300,6 +300,8 @@ class DialogoResultadosEvaluacion(QDialog):
             is_winner = bool(res.get("es_ganador")) or (pos == 1 and califica)
             
             # Check if it's our company
+            # Note: The application marks our companies with ⚑ or ➡️ symbols in participant names
+            # This is handled elsewhere in the codebase (see oferente handling logic)
             is_nuestra = "⚑" in participante or "➡️" in participante
             
             # Check if disqualified
@@ -308,18 +310,24 @@ class DialogoResultadosEvaluacion(QDialog):
             # Apply colors based on status (priority: disqualified > our company > winner)
             if is_disqualified:
                 for c in range(table.columnCount()):
-                    table.item(row, c).setBackground(RED_BG)
-                    table.item(row, c).setForeground(RED_TEXT)
+                    item = table.item(row, c)
+                    if item:
+                        item.setBackground(RED_BG)
+                        item.setForeground(RED_TEXT)
             elif is_nuestra:
                 for c in range(table.columnCount()):
-                    table.item(row, c).setBackground(INDIGO_BG)
-                    table.item(row, c).setForeground(INDIGO_TEXT)
-                    table.item(row, c).setFont(FONT_BOLD)
+                    item = table.item(row, c)
+                    if item:
+                        item.setBackground(INDIGO_BG)
+                        item.setForeground(INDIGO_TEXT)
+                        item.setFont(FONT_BOLD)
             elif is_winner or es_adj:
                 for c in range(table.columnCount()):
-                    table.item(row, c).setBackground(GREEN_BG)
-                    table.item(row, c).setForeground(GREEN_TEXT)
-                    table.item(row, c).setFont(FONT_BOLD)
+                    item = table.item(row, c)
+                    if item:
+                        item.setBackground(GREEN_BG)
+                        item.setForeground(GREEN_TEXT)
+                        item.setFont(FONT_BOLD)
 
         table.blockSignals(False)
 

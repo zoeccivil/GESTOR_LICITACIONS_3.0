@@ -8,7 +8,7 @@ from PyQt6.QtGui import QPalette, QColor
 from PyQt6.QtCore import Qt
 
 # Titanium Construct Color Palette
-PRIMARY_500 = QColor("#155E75")     # Cyan-900 (primary accent)
+PRIMARY_500 = QColor("#155E75")     # Cyan-800 (primary accent)
 PRIMARY_700 = QColor("#0E4F70")     # Darker cyan for hover
 PRIMARY_100 = QColor("#E0F2FE")     # Light cyan for selections
 NEUTRAL_50 = QColor("#F9FAFB")      # Very light gray
