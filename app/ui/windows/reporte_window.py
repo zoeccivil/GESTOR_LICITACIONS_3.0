@@ -61,15 +61,17 @@ def _hex(c: QColor) -> str:
 
 class ReportWindow(QMainWindow):
     """
-    Reporte de Licitación (temable):
-    - Integra los colores del tema activo (QPalette) en UI y gráficos.
-    - Guarda/restaura tamaño del splitter y último tab en JSON (windows.ReportWindow).
+    Reporte de Licitación, afinado al tema Titanium Construct:
+    - Cards / KPIs blancos con bordes suaves.
+    - Tablas y árbol heredan el QSS global.
+    - Sin tema oscuro propio.
     """
+
     def __init__(self, licitacion, parent: Optional[QWidget] = None, start_maximized: bool = False):
         super().__init__(parent)
         self.licitacion = licitacion
 
-        # Colores derivados del tema activo (QPalette)
+        # Colores Titanium fijos (modo claro)
         self.ui = self._resolve_theme_colors()
 
         self._setup_palette()
@@ -96,106 +98,111 @@ class ReportWindow(QMainWindow):
 
     # ---------- Tema / Colores ----------
     def _resolve_theme_colors(self) -> dict:
-        app = QGuiApplication.instance()
-        pal: QPalette = app.palette() if app else QPalette()
+        """
+        Usa explícitamente la paleta Titanium Construct en lugar
+        de deducirla dinámicamente del QPalette.
+        """
+        # Paleta Titanium Construct (clara)
+        accent = "#155E75"        # Primary-600
+        text = "#111827"          # Neutral-900
+        text_sec = "#6B7280"      # Neutral-500
+        window = "#F3F4F6"        # Neutral-100
+        base = "#FFFFFF"          # Blanco tarjetas
+        alt = "#E5E7EB"           # Neutral-200
+        button = "#FFFFFF"        # Botones neutros
+        border = "#D1D5DB"        # Neutral-300
 
-        # Roles clave
-        accent = pal.highlight().color()
-        text = pal.text().color()
-        window = pal.window().color()
-        base = pal.base().color()
-        alt = pal.alternateBase().color()
-        button = pal.button().color()
-
-        # No hay "border" en paleta; aproximar con mid() o un gris
-        border = pal.mid().color() if pal else QColor("#3A4152")
-
-        # Colores semánticos útiles
-        success = QColor("#22C55E")   # verde agradable
-        danger = QColor("#EF4444")    # rojo moderno
-        warning = QColor("#F59E0B")   # naranja moderno
+        success = "#16A34A"       # Verde éxito
+        danger = "#DC2626"        # Rojo error
+        warning = "#F59E0B"       # Ámbar advertencia
         info = accent
 
-        # Texto secundario aproximado
-        text_sec = pal.placeholderText().color() if hasattr(pal, "placeholderText") else QColor("#B9C0CC")
-
         return {
-            "accent": _hex(accent),
-            "accent_soft": f"{_hex(accent)}33",
-            "text": _hex(text),
-            "text_sec": _hex(text_sec),
-            "window": _hex(window),
-            "base": _hex(base),
-            "alt": _hex(alt),
-            "button": _hex(button),
-            "border": _hex(border),
-            "success": _hex(success),
-            "danger": _hex(danger),
-            "warning": _hex(warning),
-            "info": _hex(info),
+            "accent": accent,
+            "accent_soft": f"{accent}26",  # ~15% alpha
+            "text": text,
+            "text_sec": text_sec,
+            "window": window,
+            "base": base,
+            "alt": alt,
+            "button": button,
+            "border": border,
+            "success": success,
+            "danger": danger,
+            "warning": warning,
+            "info": info,
         }
 
     def _setup_palette(self):
-        # QSS dinámico (usa colores del tema activo)
+        """
+        QSS ligero para la ventana de reporte.
+        El grueso del estilo lo aplica el tema global Titanium.
+        """
         u = self.ui
-        self.setStyleSheet(f"""
-            QWidget {{
-                font-family: 'Segoe UI', 'DejaVu Sans', Arial;
-                font-size: 10pt;
-                color: {u['text']};
-                background: {u['window']};
-            }}
-            QToolBar {{
-                background: {u['window']};
-                border: 0;
-                border-bottom: 1px solid {u['border']};
-            }}
-            QStatusBar {{
-                background: {u['window']};
-                color: {u['text_sec']};
-            }}
-            QLabel {{
-                color: {u['text']};
-            }}
-            QTabWidget::pane {{
-                border: 1px solid {u['border']};
-                background: {u['base']};
-                border-radius: 6px;
-            }}
-            QTabBar::tab {{
-                background: {u['alt']};
-                border: 1px solid {u['border']};
-                padding: 6px 12px;
-                border-top-left-radius: 6px;
-                border-top-right-radius: 6px;
-                margin-right: 2px;
-                color: {u['text_sec']};
-            }}
-            QTabBar::tab:selected {{
-                color: {u['text']};
-                background: {u['base']};
-                border-bottom: 1px solid {u['base']};
-            }}
-        """)
+        self.setStyleSheet(
+            "QMainWindow {"
+            f"  background: {u['window']};"
+            "}"
+            "QWidget {"
+            "  font-family: 'Segoe UI', 'DejaVu Sans', Arial;"
+            "  font-size: 10pt;"
+            f"  color: {u['text']};"
+            "}"
+            "QToolBar {"
+            f"  background: {u['window']};"
+            f"  border-bottom: 1px solid {u['border']};"
+            "}"
+            "QStatusBar {"
+            f"  background: {u['window']};"
+            f"  color: {u['text_sec']};"
+            "}"
+            "QTabWidget::pane {"
+            f"  border: 1px solid {u['border']};"
+            f"  background: {u['base']};"
+            "  border-radius: 4px;"
+            "}"
+            "QTabBar::tab {"
+            f"  background: {u['alt']};"
+            f"  color: {u['text_sec']};"
+            "  padding: 6px 12px;"
+            "  border-top-left-radius: 4px;"
+            "  border-top-right-radius: 4px;"
+            "  margin-right: 2px;"
+            "}"
+            "QTabBar::tab:selected {"
+            f"  background: {u['base']};"
+            f"  color: {u['accent']};"
+            "  font-weight: bold;"
+            f"  border-top: 3px solid {u['accent']};"
+            "}"
+            "QTabBar::tab:hover:!selected {"
+            f"  background: {u['alt']};"
+            "}"
+        )
 
     def _card_stylesheet(self) -> str:
+        """Estilo de tarjetas/groupbox al estilo Titanium Construct."""
         u = self.ui
         return (
-            f"QGroupBox, QFrame{{"
-            f"background:{u['base']};"
-            f"border:1px solid {u['border']};"
-            f"border-radius:8px;"
-            f"padding:8px;"
-            f"}}"
-            f"QGroupBox::title{{"
-            f"left:8px;padding:0 4px;color:{u['text_sec']};font-weight:600;"
-            f"}}"
+            "QGroupBox, QFrame {"
+            f"  background-color: {u['base']};"
+            f"  border: 1px solid {u['border']};"
+            "  border-radius: 8px;"
+            "  padding: 8px;"
+            "  margin-top: 0.5em;"
+            "}"
+            "QGroupBox::title {"
+            "  subcontrol-origin: margin;"
+            "  subcontrol-position: top left;"
+            "  padding: 0 6px;"
+            f"  color: {u['accent']};"
+            "  font-weight: bold;"
+            "}"
         )
 
     # ---------- UI ----------
     def _build_toolbar(self):
         tb = QToolBar("Exportar", self)
-        tb.setIconSize(tb.iconSize() * 1.1)
         tb.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, tb)
 
@@ -221,15 +228,16 @@ class ReportWindow(QMainWindow):
         root.setContentsMargins(10, 10, 10, 10)
         root.setSpacing(10)
 
-        # KPIs
+        # KPIs superiores
         kpi_row = QHBoxLayout()
         kpi_row.setSpacing(10)
         root.addLayout(kpi_row)
 
         self.card_estado = self._kpi_card("Estado Actual", self.ui["accent"])
-        self.card_docs = self._kpi_card("Progreso Docs", self.ui["success"], with_progress=True)
+        self.card_docs = self._kpi_card("Progreso Docs", self.ui["accent"], with_progress=True)
         self.card_dias = self._kpi_card("Días Restantes", self.ui["warning"])
         self.card_dif = self._kpi_card("Diferencia Oferta", self.ui["danger"])
+
         for c in (self.card_estado, self.card_docs, self.card_dias, self.card_dif):
             kpi_row.addWidget(c)
 
@@ -327,9 +335,10 @@ class ReportWindow(QMainWindow):
         card = QFrame()
         card.setStyleSheet(self._card_stylesheet())
         lay = QVBoxLayout(card)
+        lay.setSpacing(4)
 
         t = QLabel(title)
-        t.setStyleSheet(f"color:{self.ui['text_sec']}; font-weight:600;")
+        t.setStyleSheet(f"color:{self.ui['text_sec']}; font-weight:600; font-size:11px;")
         lay.addWidget(t)
 
         row = QHBoxLayout()
@@ -346,9 +355,17 @@ class ReportWindow(QMainWindow):
             pb.setValue(0)
             pb.setFormat("%p%")
             pb.setStyleSheet(
-                f"QProgressBar{{min-height:12px;border-radius:6px;background:{self.ui['alt']};"
-                f"border:1px solid {self.ui['border']}; color:{self.ui['text']};}}"
-                f"QProgressBar::chunk{{background:{self.ui['accent']}; border-radius:6px;}}"
+                "QProgressBar {"
+                "  min-height: 12px;"
+                "  border-radius: 6px;"
+                f"  background: {self.ui['alt']};"
+                f"  border: 1px solid {self.ui['border']};"
+                f"  color: {self.ui['text']};"
+                "}"
+                "QProgressBar::chunk {"
+                f"  background: {self.ui['accent']};"
+                "  border-radius: 6px;"
+                "}"
             )
             lay.addWidget(pb)
 
@@ -357,8 +374,11 @@ class ReportWindow(QMainWindow):
         return card
 
     def _populate_kpis(self):
+        # Estado actual
         estado = getattr(self.licitacion, "estado", "N/D") or "N/D"
         self.card_estado._value_label.setText(estado)
+
+        # Progreso docs
         pct = 0.0
         try:
             if hasattr(self.licitacion, "get_porcentaje_completado"):
@@ -368,6 +388,8 @@ class ReportWindow(QMainWindow):
         self.card_docs._value_label.setText(f"{pct:.1f}%")
         if self.card_docs._progress:
             self.card_docs._progress.setValue(int(round(pct)))
+
+        # Días restantes
         dias = "N/D"
         try:
             if hasattr(self.licitacion, "get_dias_restantes"):
@@ -375,6 +397,8 @@ class ReportWindow(QMainWindow):
         except Exception:
             pass
         self.card_dias._value_label.setText(str(dias))
+
+        # Diferencia oferta
         dif = 0.0
         try:
             if hasattr(self.licitacion, "get_diferencia_porcentual"):
@@ -395,12 +419,6 @@ class ReportWindow(QMainWindow):
         h.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         h.setStretchLastSection(False)
         h.setMinimumSectionSize(80)
-        # Header QSS con tema
-        self.tbl_crono.setStyleSheet(
-            self.tbl_crono.styleSheet()
-            + f"QHeaderView::section{{min-height:28px;color:{self.ui['text']};"
-              f"background:{self.ui['alt']}; border:1px solid {self.ui['border']}; padding:6px;}}"
-        )
 
     def _populate_cronograma(self):
         self.tbl_crono.setRowCount(0)
@@ -465,7 +483,6 @@ class ReportWindow(QMainWindow):
             ax = self.canvas_fin.figure.subplots()
             ax.clear()
 
-            # Aplicar estilo acorde al tema
             ax.set_facecolor(self.ui["base"])
             ax.tick_params(axis="x", colors=self.ui["text_sec"])
             ax.tick_params(axis="y", colors=self.ui["text_sec"])
@@ -644,7 +661,6 @@ class ReportWindow(QMainWindow):
 
     # ------------------------ Exportar ------------------------
     def _export_report(self, formato: str):
-        # Elegir nombre por extensión; ReportGenerator detecta por file_path
         ext = ".pdf" if formato == "pdf" else ".xlsx"
         title = f"Guardar como {formato.upper()}"
         default_name = f"Reporte_{str(getattr(self.licitacion, 'numero_proceso', 'proceso')).replace(' ', '_')}{ext}"
@@ -652,7 +668,6 @@ class ReportWindow(QMainWindow):
         if not path:
             return
 
-        # Validaciones de disponibilidad con detalle de import
         if not REPORT_GENERATOR_AVAILABLE or ReportGenerator is None:
             return QMessageBox.warning(
                 self,
@@ -663,7 +678,6 @@ class ReportWindow(QMainWindow):
                 "app/core/reporting/__init__.py exporte ReportGenerator.",
             )
 
-        # Dependencias (opcionales, el propio ReportGenerator también valida)
         if formato == "pdf" and not REPORTLAB_AVAILABLE:
             return QMessageBox.warning(self, "Exportar", "La librería 'reportlab' no está instalada (pip install reportlab).")
         if formato == "excel" and not OPENPYXL_AVAILABLE:
@@ -671,7 +685,6 @@ class ReportWindow(QMainWindow):
 
         try:
             gen = ReportGenerator()
-            # Invocación tolerante: usa el método disponible
             if hasattr(gen, "generate_bid_results_report"):
                 gen.generate_bid_results_report(self.licitacion, path)
             elif hasattr(gen, "generate_package_analysis_report"):
@@ -695,13 +708,11 @@ class ReportWindow(QMainWindow):
         hh = t.horizontalHeader()
         hh.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 
-        # QSS con tema
+        # Dejar que el QSS global Titanium gobierne; solo afinamos la rejilla
         t.setStyleSheet(
-            f"QTableWidget{{gridline-color:{self.ui['border']}; background:{self.ui['base']}; "
-            f"alternate-background-color:{self.ui['alt']}; selection-background-color:{self.ui['accent']}; "
-            f"selection-color:#ffffff;}} "
-            f"QHeaderView::section{{background:{self.ui['alt']}; padding:6px; border:1px solid {self.ui['border']}; "
-            f"font-weight:600; color:{self.ui['text']}; min-height:28px;}}"
+            "QTableWidget {"
+            f"  gridline-color: {self.ui['border']};"
+            "}"
         )
 
     def _new_canvas(self):
@@ -723,12 +734,8 @@ class ReportWindow(QMainWindow):
 
     def closeEvent(self, event):
         try:
-            # Guardar último estado del splitter y el tab activo en el JSON
-            try:
-                set_splitter_sizes("ReportWindow", "split_mid", self.split_mid.sizes())
-                set_tab_index("ReportWindow", "main", int(self.tabs.currentIndex()))
-            except Exception:
-                pass
+            set_splitter_sizes("ReportWindow", "split_mid", self.split_mid.sizes())
+            set_tab_index("ReportWindow", "main", int(self.tabs.currentIndex()))
         finally:
             super().closeEvent(event)
 
@@ -737,7 +744,6 @@ class ReportWindow(QMainWindow):
         Devuelve un icono. Intenta cargar app.ui.icons.icon_loader.get_icon en tiempo de ejecución.
         Si falla o no existe, usa el QStyle nativo como fallback.
         """
-        # Cachear el loader en la instancia
         if not hasattr(self, "_icon_loader_func"):
             self._icon_loader_func = None
             try:
@@ -749,12 +755,10 @@ class ReportWindow(QMainWindow):
             except Exception:
                 self._icon_loader_func = None
 
-        # 1) Loader opcional (si existe) usando nombre semántico
         if callable(getattr(self, "_icon_loader_func", None)) and semantic_name:
             try:
                 return self._icon_loader_func(semantic_name)  # type: ignore[misc]
             except Exception:
                 pass
 
-        # 2) Fallback nativo
         return self.style().standardIcon(std)

@@ -502,17 +502,27 @@ class LicitationDetailsWindow(QDialog):
             self.combo_kit.setEnabled(False)
 
     # -------------------- Tabs load/collect --------------------
+    # -------------------- Tabs load/collect --------------------
     def _load_data_into_tabs(self):
+        """
+        Carga el modelo en las pestañas.
+
+        Nota: la lógica de colores de diferencias (% Dif. Licit. / % Dif. Pers.)
+        ahora vive dentro de TabLotes, por lo que no se aplica ningún
+        post-proceso adicional aquí.
+        """
         try:
             self.tab_general.load_data()
             self.tab_lotes.load_data()
             self.tab_competitors.load_data()
-            # Post-procesos tras cargar
+            # Post-procesos tras cargar (solo fechas por defecto, etc.)
             self._fix_default_dates_if_needed()
-            self._postprocess_lotes_diff_colors()
         except Exception as e:
-            QMessageBox.critical(self, "Error al Cargar Pestañas",
-                                 f"No se pudieron cargar completamente los datos en las pestañas:\n{e}")
+            QMessageBox.critical(
+                self,
+                "Error al Cargar Pestañas",
+                f"No se pudieron cargar completamente los datos en las pestañas:\n{e}",
+            )
 
     def _collect_data_from_header(self):
         # Empresas -> modelo (el header debe prevalecer en creación; en edición no bloquea el tab)
@@ -718,95 +728,19 @@ class LicitationDetailsWindow(QDialog):
                 pass
 
     # -------------------- Lotes: colorear texto en % Dif --------------------
-    def _try_get_lotes_table(self) -> Optional[QTableWidget]:
-        # Atributos comunes
-        for cand in ("tabla_lotes", "table_lotes", "tbl_lotes", "tabla", "tableWidget", "tablaLotes"):
-            if hasattr(self.tab_lotes, cand):
-                obj = getattr(self.tab_lotes, cand)
-                if isinstance(obj, QTableWidget):
-                    return obj
-        # Búsqueda por tipo
-        tables = self.tab_lotes.findChildren(QTableWidget)
-        return tables[0] if tables else None
-
-    def _find_diff_columns(self, table: QTableWidget) -> tuple[Optional[int], Optional[int]]:
-        lict_col = None
-        pers_col = None
-        cols = table.columnCount()
-        for i in range(cols):
-            itm = table.horizontalHeaderItem(i)
-            txt = (itm.text() if itm else "").lower()
-            if "% dif" in txt and ("lict" in txt or "lici" in txt):
-                lict_col = i
-            if "% dif" in txt and ("pers" in txt or "perso" in txt or "personal" in txt):
-                pers_col = i
-        return lict_col, pers_col
-
-    def _parse_percent_value(self, s: str) -> Optional[float]:
-        if not s:
-            return None
-        # Extrae primer número (con , o .) y signo
-        m = re.search(r"-?\d+(?:[.,]\d+)?", s.replace(" ", ""))
-        if not m:
-            return None
-        raw = m.group(0)
-        # Normalizar: quitar miles y usar punto como decimal
-        raw = raw.replace(".", "").replace(",", ".")
-        try:
-            return float(raw)
-        except Exception:
-            return None
-
-    def _postprocess_lotes_diff_colors(self):
-        table = self._try_get_lotes_table()
-        if not table or table.rowCount() == 0 or table.columnCount() == 0:
-            return
-        lict_col, pers_col = self._find_diff_columns(table)
-        for col in (lict_col, pers_col):
-            if col is None:
-                continue
-            for r in range(table.rowCount()):
-                item = table.item(r, col)
-                if not item:
-                    continue
-                # Tomar color previo de fondo si existía (mantener señal semántica)
-                bg_brush = item.background()
-                bg_color: Optional[QColor] = None
-                try:
-                    bg_color = bg_brush.color() if bg_brush is not None else None
-                except Exception:
-                    bg_color = None
-
-                # Limpiar fondo
-                try:
-                    item.setBackground(QBrush(Qt.GlobalColor.transparent))
-                except Exception:
-                    pass
-
-                # Calcular por signo si no había color previo
-                fcolor: Optional[QColor] = None
-                if bg_color and bg_color.isValid():
-                    fcolor = bg_color
-                else:
-                    val = self._parse_percent_value(item.text() or "")
-                    if val is not None:
-                        if val >= 0:
-                            # verde suave para positivo
-                            fcolor = QColor(0, 160, 0)
-                        else:
-                            # rojo suave para negativo
-                            fcolor = QColor(200, 0, 0)
-                if fcolor:
-                    try:
-                        item.setForeground(QBrush(fcolor))
-                    except Exception:
-                        pass
 
     def _on_tab_changed(self, idx: int):
-        # Reaplicar post-proceso al entrar a Lotes
-        w = self.tab_widget.widget(idx)
-        if w is self.tab_lotes:
-            QTimer.singleShot(0, self._postprocess_lotes_diff_colors)
+        """
+        Maneja cambios de pestaña.
+
+        Antes se reaplicaba un post-proceso de colores sobre la tabla de lotes
+        (_postprocess_lotes_diff_colors), pero esa lógica ahora está contenida
+        íntegramente dentro de TabLotes, para evitar conflictos con el tema
+        Titanium Construct.
+        """
+        # Si en el futuro necesitas lógica al cambiar de pestaña, colócala aquí.
+        _ = self.tab_widget.widget(idx)
+        return
 
     # -------------------- Validación / Normalización --------------------
     def _normalize_model(self):
@@ -1118,6 +1052,7 @@ class LicitationDetailsWindow(QDialog):
         QTimer.singleShot(900, self.accept)
 
     # -------------------- Botones Guardar --------------------
+    # -------------------- Botones Guardar --------------------
     def _save_and_continue(self):
         # 1) Pestañas -> modelo
         if not self._collect_data_from_tabs():
@@ -1127,13 +1062,17 @@ class LicitationDetailsWindow(QDialog):
         self._normalize_model()
         if not self._validate_before_save():
             return
+
         if self._save_changes():
             self.btn_save_continue.setText("¡Guardado!")
             self.btn_save_continue.setEnabled(False)
             QTimer.singleShot(1500, self._enable_save_continue_button)
+
+            # Recargar datos desde el modelo en las pestañas
             self._load_data_into_tabs()
-            # Tras recargar, asegurar post-procesos
-            self._postprocess_lotes_diff_colors()
+            # Importante: ya no llamamos a _postprocess_lotes_diff_colors,
+            # TabLotes se encarga de aplicar sus propios estilos de forma consistente.
+
             # Si recién se creó y ahora hay ID, hacer visible Eliminar
             if getattr(self.licitacion, "id", None) and not self.btn_delete.isVisible():
                 self.btn_delete.setVisible(True)

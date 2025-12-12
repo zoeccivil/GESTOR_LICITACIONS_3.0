@@ -49,8 +49,11 @@ class TabLotes(QWidget):
 
         # Titanium Construct colors for lotes highlighting
         self.color_ahorro = QColor("#D1FAE5")    # Success green for savings
+        self.text_ahorro = QColor("#065F46")     # Dark green text
         self.color_perdida = QColor("#FEF2F2")   # Danger red for loss
+        self.text_perdida = QColor("#DC2626")    # Red text
         self.color_default = QColor(Qt.GlobalColor.white)
+        self.text_default = QColor("#111827")    # Neutral-900
         self.color_nuestra = QColor("#EEF2FF")   # Indigo for our company
         self.text_nuestra = QColor("#4F46E5")    # Indigo text
 
@@ -59,13 +62,6 @@ class TabLotes(QWidget):
 
         self._build_ui()
         self._connect_signals()
-
-    # (métodos _build_ui, _connect_signals, load_data, _set_item, _color_percentage_cell, collect_data, _on_cell_changed
-    # exactamente como en tu último código; los omito aquí por brevedad)
-
-    # Helpers de empresas y CRUD (_get_nombres_empresas_actuales, _agregar_lote, _get_selected_lote, _editar_lote,
-    # _editar_lote_on_double_click, _open_edit_dialog, _eliminar_lote) también como en tu último envío, con las llamadas
-    # a self.db.save_licitacion(self.licitacion) ya añadidas.
 
     # ------------------------------------------------------------------ UI ------------------------------------------------------------------
     def _build_ui(self):
@@ -198,23 +194,39 @@ class TabLotes(QWidget):
                 self._set_item(row, self.COL_MONTO_PERSONAL, monto_pers_str, align='right')
                 self._set_item(row, self.COL_MONTO_OFERTADO, monto_ofer_str, align='right')
 
+                # % Dif. Licitación
                 self._set_item(row, self.COL_DIF_LIC, dif_lic_str, align='right')
                 self._color_percentage_cell(self.table_lotes.item(row, self.COL_DIF_LIC), dif_lic_val)
 
+                # % Dif. Personal
                 self._set_item(row, self.COL_DIF_PERS, dif_pers_str, align='right')
                 self._color_percentage_cell(self.table_lotes.item(row, self.COL_DIF_PERS), dif_pers_val)
 
+                # Nuestra empresa
                 self._set_item(row, self.COL_EMPRESA, lote.empresa_nuestra or "")
-                
+
+                # Highlight rows where we have "our company" assigned
                 # Highlight rows where we have "our company" assigned
                 if lote.empresa_nuestra:
                     font_bold = QFont()
                     font_bold.setBold(True)
+
                     for c in range(self.table_lotes.columnCount()):
-                        if self.table_lotes.item(row, c):
-                            self.table_lotes.item(row, c).setBackground(self.color_nuestra)
-                            self.table_lotes.item(row, c).setForeground(self.text_nuestra)
-                            self.table_lotes.item(row, c).setFont(font_bold)
+                        item = self.table_lotes.item(row, c)
+                        if not item:
+                            continue
+
+                        # Para las columnas de % Dif. mantenemos los colores semánticos
+                        if c in (self.COL_DIF_LIC, self.COL_DIF_PERS):
+                            # Solo reforzamos negrita para que sigan destacando,
+                            # pero no tocamos foreground ni background.
+                            item.setFont(font_bold)
+                            continue
+
+                        # Para el resto de columnas, aplicamos estilo "Nuestra Empresa"
+                        item.setBackground(self.color_nuestra)
+                        item.setForeground(self.text_nuestra)
+                        item.setFont(font_bold)
 
             self.table_lotes.resizeColumnsToContents()
             self.table_lotes.horizontalHeader().setSectionResizeMode(self.COL_NOMBRE, QHeaderView.ResizeMode.Stretch)
@@ -239,20 +251,32 @@ class TabLotes(QWidget):
         if data is not None:
             item.setData(Qt.ItemDataRole.UserRole, data)
 
+        # Color de texto por defecto coherente con Titanium
+        item.setForeground(self.text_default)
+
         self.table_lotes.setItem(row, col, item)
 
     def _color_percentage_cell(self, item: QTableWidgetItem | None, value: float):
+        """
+        Aplica colores semánticos Titanium Construct a las celdas de porcentaje,
+        garantizando que el texto sea legible incluso sin selección.
+        """
         if item is None:
             return
+
+        # Importante: siempre forzamos un color de texto explícito
         if value > 0.001:
             item.setBackground(self.color_ahorro)
+            item.setForeground(self.text_ahorro)   # verde oscuro
             item.setToolTip(f"Ahorro del {value:.2f}%")
         elif value < -0.001:
             item.setBackground(self.color_perdida)
+            item.setForeground(self.text_perdida)  # rojo
             item.setToolTip(f"Sobreprecio del {abs(value):.2f}%")
         else:
             item.setBackground(self.color_default)
-            item.setToolTip("Sin diferencia" if value == 0.0 else "")
+            item.setForeground(self.text_default)  # Neutral-900
+            item.setToolTip("Sin diferencia" if abs(value) <= 0.001 else "")
 
     def collect_data(self) -> bool:
         print("TabLotes: Collect data (no action needed, model updated by signals).")
