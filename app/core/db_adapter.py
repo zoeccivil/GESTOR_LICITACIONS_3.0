@@ -20,7 +20,7 @@ from .firebase_adapter import (
 )
 from .models import Documento, Empresa, Licitacion, Lote, Oferente
 from app.core.log_utils import get_logger
-
+from app.core.utils import normalize_lote_numero
 logger = get_logger("db_adapter")
 
 
@@ -376,37 +376,28 @@ class DatabaseAdapter:
     # ------------------------------------------------------------------
     # Auxiliar mappers
     # ------------------------------------------------------------------
-    def _map_lote_dict_to_model(self, d_lote: Dict[str, Any]) -> Lote:
-        """
-        Convierte un dict de Firestore en un objeto Lote, incluyendo empresa_nuestra.
-        """
-        try:
-            lote = Lote(
-                id=d_lote.get("id"),
-                numero=str(d_lote.get("numero", "")),
-                nombre=d_lote.get("nombre", "") or "",
-                monto_base=float(d_lote.get("monto_base", 0.0) or 0.0),
-                monto_base_personal=float(d_lote.get("monto_base_personal", 0.0) or 0.0),
-                monto_ofertado=float(d_lote.get("monto_ofertado", 0.0) or 0.0),
-                participamos=bool(d_lote.get("participamos", True)),
-                fase_A_superada=bool(d_lote.get("fase_A_superada", True)),
-                ganador_nombre=d_lote.get("ganador_nombre", "") or "",
-                ganado_por_nosotros=bool(d_lote.get("ganado_por_nosotros", False)),
-                # *** IMPORTANTE: traer empresa_nuestra desde Firestore ***
-                empresa_nuestra=(d_lote.get("empresa_nuestra") or None),
-            )
-            return lote
-        except Exception as e:
-            print(f"[WARN][db_adapter] Error mapeando lote desde Firestore: {e} datos={d_lote}")
-            return Lote(
-                numero=str(d_lote.get("numero", "")),
-                nombre=d_lote.get("nombre", "") or "",
-            )
+
+
+    def _map_lote_dict_to_model(self, data: Dict[str, Any]) -> Lote:
+        return Lote(
+            id=data.get("id"),
+            numero=normalize_lote_numero(data.get("numero")),
+            nombre=data.get("nombre", ""),
+            monto_base=float(data.get("monto_base", 0.0) or 0.0),
+            monto_base_personal=float(data.get("monto_base_personal", 0.0) or 0.0),
+            monto_ofertado=float(data.get("monto_ofertado", 0.0) or 0.0),
+            participamos=bool(data.get("participamos", True)),
+            fase_A_superada=bool(data.get("fase_A_superada", False)),
+            ganador_nombre=data.get("ganador_nombre", ""),
+            ganado_por_nosotros=bool(data.get("ganado_por_nosotros", False)),
+            empresa_nuestra=data.get("empresa_nuestra") or None,
+        )
+
 
     def _map_licitacion_dict_to_model(self, data: Dict[str, Any]) -> Licitacion:
         # DEBUG consola: ver cómo vienen los lotes crudos desde Firestore
         print("[DEBUG][DB._map_licitacion] Mapeando licitación desde dict. ID:",
-            data.get("id"), "numero_proceso:", data.get("numero_proceso"))
+              data.get("id"), "numero_proceso:", data.get("numero_proceso"))
         print("[DEBUG][DB._map_licitacion] Lotes crudos desde Firestore:")
         for l in data.get("lotes", []):
             print("   [RAW-LOTE]", l)
@@ -438,35 +429,28 @@ class DatabaseAdapter:
             fecha_creacion=data.get("fecha_creacion", str(_dt.date.today())),
         )
 
-        lic.empresas_nuestras = [
-            Empresa(e.get("nombre", ""))
-            for e in data.get("empresas_nuestras", [])
-            if e.get("nombre")
-        ]
-
+        lic.empresas_nuestras = [Empresa(e.get("nombre", "")) for e in data.get("empresas_nuestras", [])]
         lic.lotes = [self._map_lote_dict_to_model(l) for l in data.get("lotes", [])]
-
         lic.oferentes_participantes = [
-            self._map_oferente_dict_to_model(o)
-            for o in data.get("oferentes_participantes", [])
+            self._map_oferente_dict_to_model(o) for o in data.get("oferentes_participantes", [])
         ]
         lic.documentos_solicitados = [
-            self._map_documento_dict_to_model(d)
-            for d in data.get("documentos_solicitados", [])
+            self._map_documento_dict_to_model(d) for d in data.get("documentos_solicitados", [])
         ]
         lic.cronograma = data.get("cronograma", {})
         lic.fallas_fase_a = data.get("fallas_fase_a", [])
         lic.parametros_evaluacion = data.get("parametros_evaluacion", {})
 
+        # DEBUG consola: ver cómo quedan los lotes mapeados
         print("[DEBUG][DB._map_licitacion] Lotes mapeados a modelo:")
         for l in lic.lotes:
             print(f"   [MODEL-LOTE] numero={l.numero!r}, empresa_nuestra={getattr(l, 'empresa_nuestra', None)!r}")
 
+        # DEBUG archivo: lotes mapeados
         logger.debug("_map_licitacion_dict_to_model: Lotes mapeados a modelo:")
         for l in lic.lotes:
             logger.debug(
-                "MODEL-LOTE numero=%r empresa_nuestra=%r monto_base=%r monto_base_personal=%r "
-                "monto_ofertado=%r participamos=%r fase_A_superada=%r ganador_nombre=%r ganado_por_nosotros=%r",
+                "MODEL-LOTE numero=%r empresa_nuestra=%r monto_base=%r monto_base_personal=%r monto_ofertado=%r participamos=%r fase_A_superada=%r ganador_nombre=%r ganado_por_nosotros=%r",
                 getattr(l, "numero", None),
                 getattr(l, "empresa_nuestra", None),
                 getattr(l, "monto_base", None),
@@ -478,8 +462,7 @@ class DatabaseAdapter:
                 getattr(l, "ganado_por_nosotros", None),
             )
 
-        return lic
-    
+        return lic    
 
     def _map_documento_dict_to_model(self, data: Dict[str, Any]) -> Documento:
         return Documento(

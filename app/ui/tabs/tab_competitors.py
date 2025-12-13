@@ -96,6 +96,8 @@ class TabCompetitors(QWidget):
         self._build_ui()
         self._connect_signals()
         self._update_button_states()
+        self._loading = False
+
 
     def _build_ui(self):
         """Construye la interfaz de la pestaña con QSplitter."""
@@ -300,16 +302,20 @@ class TabCompetitors(QWidget):
         self.table_ofertas.itemSelectionChanged.connect(self._on_oferta_select)
 
     def load_data(self):
-        """Carga los datos iniciales de la licitación en los widgets de esta pestaña."""
         print("TabCompetitors: Cargando datos...")
-        self._actualizar_tree_competidores()
-        self._rebuild_ganadores_ui()
+        self._loading = True
+        try:
+            self._actualizar_tree_competidores()
+            self._rebuild_ganadores_ui()
 
-        if self.table_competidores.rowCount() > 0:
-            self.table_competidores.selectRow(0)
-            self._on_competidor_select()
-        else:
-            self._on_competidor_select()
+            if self.table_competidores.rowCount() > 0:
+                self.table_competidores.selectRow(0)
+                self._on_competidor_select()
+            else:
+                self._on_competidor_select()
+        finally:
+            self._loading = False
+
         print("TabCompetitors: Datos cargados.")
 
     def collect_data(self) -> bool:
@@ -512,7 +518,11 @@ class TabCompetitors(QWidget):
             combo.setCurrentIndex(idx_pre if idx_pre >= 0 else 0)  # Default a "Sin ganador" si no se encuentra
 
             self.layout_form_ganadores.addRow(label, combo)
-            self.combo_ganador_por_lote[lote_num_key] = combo  # Guardar referencia al combo
+            self.combo_ganador_por_lote[lote_num_key] = combo
+            combo.currentIndexChanged.connect(
+                lambda _, k=lote_num_key, c=combo: self._on_ganador_changed(k, c)
+            )
+  # Guardar referencia al combo
 
     def _aplicar_ganadores_al_modelo(self):
         """
@@ -644,6 +654,9 @@ class TabCompetitors(QWidget):
                     return
 
                 self.licitacion.oferentes_participantes.append(nuevo_oferente)
+                if hasattr(self.parent_window, "mark_dirty"):
+                    self.parent_window.mark_dirty("TabCompetitors.agregar_competidor")
+
                 self._actualizar_tree_competidores()
                 self._rebuild_ganadores_ui()
                 print(f"TabCompetitors: Competidor '{nuevo_oferente.nombre}' agregado.")
@@ -679,6 +692,9 @@ class TabCompetitors(QWidget):
 
                 competidor.nombre = oferente_actualizado.nombre
                 competidor.comentario = oferente_actualizado.comentario
+                if hasattr(self.parent_window, "mark_dirty"):
+                    self.parent_window.mark_dirty("TabCompetitors.editar_competidor")
+
 
                 self._actualizar_tree_competidores()
                 self._rebuild_ganadores_ui()
@@ -708,6 +724,9 @@ class TabCompetitors(QWidget):
         if reply == QMessageBox.StandardButton.Yes:
             try:
                 self.licitacion.oferentes_participantes.remove(competidor)
+                if hasattr(self.parent_window, "mark_dirty"):
+                    self.parent_window.mark_dirty("TabCompetitors.eliminar_competidor")
+
                 self._actualizar_tree_competidores()
                 # Limpiar la tabla de ofertas ya que el competidor ya no existe
                 self._actualizar_tree_ofertas(None)
@@ -741,6 +760,9 @@ class TabCompetitors(QWidget):
                 nueva_oferta_dict = dialogo.get_oferta_dict()
                 if nueva_oferta_dict:
                     competidor.ofertas_por_lote.append(nueva_oferta_dict)
+                    if hasattr(self.parent_window, "mark_dirty"):
+                        self.parent_window.mark_dirty("TabCompetitors.agregar_oferta")
+
                     self._actualizar_tree_ofertas(competidor)
                     self._rebuild_ganadores_ui()
                     print(f"TabCompetitors: Oferta agregada para lote {nueva_oferta_dict['lote_numero']}.")
@@ -802,6 +824,9 @@ class TabCompetitors(QWidget):
                 oferta_actualizada_dict = dialogo.get_oferta_dict()
                 if oferta_actualizada_dict:
                     oferta_dict_original.update(oferta_actualizada_dict)
+                    if hasattr(self.parent_window, "mark_dirty"):
+                        self.parent_window.mark_dirty("TabCompetitors.editar_oferta")
+
                     self._actualizar_tree_ofertas(competidor)
                     self._rebuild_ganadores_ui()
                     print(f"TabCompetitors: Oferta de lote {lote_num_to_edit} actualizada.")
@@ -842,6 +867,8 @@ class TabCompetitors(QWidget):
             final_count = len(competidor.ofertas_por_lote)
 
             if final_count < initial_count:
+                if hasattr(self.parent_window, "mark_dirty"):
+                    self.parent_window.mark_dirty("TabCompetitors.eliminar_oferta")
                 # Recargar la tabla de ofertas
                 self._actualizar_tree_ofertas(competidor)
                 # Reconstruir UI ganadores (este competidor ya no será opción para este lote)
@@ -1421,3 +1448,23 @@ class TabCompetitors(QWidget):
         # Si quieres abrirla maximizada:
         # dlg.setWindowState(dlg.windowState() | Qt.WindowState.WindowMaximized)
         dlg.exec()
+
+
+    def _on_ganador_changed(self, lote_key: str, combo: QComboBox):
+        # Evitar ruido durante carga inicial
+        if getattr(self, "_loading", False):
+            return
+
+        valor = combo.currentData()
+
+        print(
+            f"[CHANGE][TabCompetitors] "
+            f"Ganador cambiado en lote {lote_key} -> {valor}"
+        )
+
+        # 🧷 Marcar como dirty (NO guardar aquí)
+        if hasattr(self.parent_window, "mark_dirty"):
+            self.parent_window.mark_dirty(
+                f"TabCompetitors.ganador:{lote_key}"
+            )
+        

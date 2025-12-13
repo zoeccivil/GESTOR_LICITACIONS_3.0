@@ -465,7 +465,11 @@ class AddLicitacionWindow(QDialog):
 
     def _agregar_lote(self):
         if not self.empresas_seleccionadas:
-            QMessageBox.warning(self, "Empresas Requeridas", "Seleccione al menos una empresa antes de agregar lotes.")
+            QMessageBox.warning(
+                self,
+                "Empresas Requeridas",
+                "Seleccione al menos una empresa antes de agregar lotes."
+            )
             return
 
         dialog = GestionarLoteDialog(
@@ -474,17 +478,43 @@ class AddLicitacionWindow(QDialog):
             initial_data=None,
             participating_companies=self.empresas_seleccionadas,
         )
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            lote = self._lote_desde_dialog(dialog)
-            if not lote:
-                QMessageBox.warning(self, "Aviso", "No se obtuvo un lote válido del diálogo.")
-                return
-            if any(str(x.numero) == str(lote.numero) for x in self.lotes_temp):
-                QMessageBox.warning(self, "Lote Duplicado", f"Ya existe un lote con el número '{lote.numero}'.")
-                return
-            self.lotes_temp.append(lote)
-            self._actualizar_tabla_lotes()
-            self.tabla_lotes.selectRow(len(self.lotes_temp) - 1)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        lote = dialog.get_lote_obj()
+        if not lote:
+            QMessageBox.warning(self, "Aviso", "No se obtuvo un lote válido del diálogo.")
+            return
+
+        # Evitar duplicados
+        if any(str(x.numero) == str(lote.numero) for x in self.lotes_temp):
+            QMessageBox.warning(
+                self,
+                "Lote Duplicado",
+                f"Ya existe un lote con el número '{lote.numero}'."
+            )
+            return
+
+        # 1️⃣ Agregar al modelo en memoria
+        self.lotes_temp.append(lote)
+        self.licitacion.lotes = list(self.lotes_temp)
+
+        # 2️⃣ GUARDADO AUTOMÁTICO (candado)
+        try:
+            self.db_adapter.save_licitacion(self.licitacion)
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Error al Guardar",
+                f"No se pudo guardar el lote en Firebase:\n{e}"
+            )
+            return
+
+        # 3️⃣ Refrescar UI
+        self._actualizar_tabla_lotes()
+        self.tabla_lotes.selectRow(len(self.lotes_temp) - 1)
+
 
     def _editar_lote(self):
         idx, lote_actual = self._get_selected_lote_index_and_obj()
@@ -498,17 +528,51 @@ class AddLicitacionWindow(QDialog):
             initial_data=lote_actual,
             participating_companies=self.empresas_seleccionadas,
         )
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            editado = self._lote_desde_dialog(dialog)
-            if not editado:
-                QMessageBox.warning(self, "Aviso", "No se obtuvo un lote válido del diálogo.")
-                return
-            if any((str(x.numero) == str(editado.numero) and i != idx) for i, x in enumerate(self.lotes_temp)):
-                QMessageBox.warning(self, "Lote Duplicado", f"Ya existe otro lote con el número '{editado.numero}'.")
-                return
-            self.lotes_temp[idx] = editado
-            self._actualizar_tabla_lotes()
-            self.tabla_lotes.selectRow(idx)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        editado = dialog.get_lote_obj()
+        if not editado:
+            QMessageBox.warning(self, "Aviso", "No se obtuvo un lote válido del diálogo.")
+            return
+
+        # Evitar duplicados por número
+        if any(
+            str(x.numero) == str(editado.numero) and i != idx
+            for i, x in enumerate(self.lotes_temp)
+        ):
+            QMessageBox.warning(
+                self,
+                "Lote Duplicado",
+                f"Ya existe otro lote con el número '{editado.numero}'."
+            )
+            return
+
+        # 🔐 Preservar ID del lote
+        if getattr(lote_actual, "id", None) is not None:
+            editado.id = lote_actual.id
+
+        # 1️⃣ Actualizar en memoria
+        self.lotes_temp[idx] = editado
+        self.licitacion.lotes = list(self.lotes_temp)
+
+        # 2️⃣ GUARDADO AUTOMÁTICO (candado)
+        try:
+            self.db_adapter.save_licitacion(self.licitacion)
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Error al Guardar",
+                f"No se pudo guardar el lote editado en Firebase:\n{e}"
+            )
+            return
+
+        # 3️⃣ Refrescar UI
+        self._actualizar_tabla_lotes()
+        self.tabla_lotes.selectRow(idx)
+
+
 
     def _eliminar_lote(self):
         lote_index, lote_a_eliminar = self._get_selected_lote_index_and_obj()
