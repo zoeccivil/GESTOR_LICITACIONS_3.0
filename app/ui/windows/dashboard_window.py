@@ -10,13 +10,11 @@ from PyQt6.QtCore import (
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QTableView, QLabel, QLineEdit, QComboBox,
     QPushButton, QHeaderView, QMenu, QGroupBox, QGridLayout, QSizePolicy,
-    QDialog, QTableWidget, QTableWidgetItem, QDialogButtonBox, QAbstractItemView, QFrame
+    QDialog, QTableWidget, QTableWidgetItem, QDialogButtonBox, QAbstractItemView, QFrame, QSplitter
 )
 from PyQt6.QtGui import QGuiApplication, QCloseEvent, QDesktopServices, QColor, QBrush
 
-# --- AÑADIDO ---
 from app.core.models import Licitacion
-# --- FIN AÑADIDO ---
 from app.core.logic.status_engine import StatusEngine, DefaultStatusEngine, NextDeadline
 from app.ui.delegates.row_color_delegate import RowColorDelegate, ROW_BG_ROLE
 from app.ui.delegates.progress_bar_delegate import ProgressBarDelegate
@@ -25,17 +23,7 @@ from app.ui.models.status_proxy_model import StatusFilterProxyModel
 from app.ui.models.licitaciones_table_model import LicitacionesTableModel
 from app.ui.windows import ventana_agregar_licitacion
 from app.ui.windows.reporte_window import ReportWindow
-# NO pongas dlg = AddLicitacionWindow() fuera de una función o clase
-
-
-from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, QLineEdit, QComboBox,
-    QPushButton, QTableView, QHeaderView, QSizePolicy, QSplitter, QWidget, QTabWidget
-)
-from PyQt6.QtCore import Qt, QSize, QSettings
-
 from app.ui.windows.ventana_agregar_licitacion import AddLicitacionWindow
-
 
 ROLE_RECORD_ROLE = Qt.ItemDataRole.UserRole + 1002
 ESTADO_TEXT_ROLE = Qt.ItemDataRole.UserRole + 1003
@@ -49,7 +37,7 @@ DIFERENCIA_PCT_ROLE = Qt.ItemDataRole.UserRole + 1013
 
 class DashboardWindow(QWidget):
     countsChanged = pyqtSignal(int, int)
-    detailRequested = pyqtSignal(object) # Envía el objeto Licitacion o el N° de proceso
+    detailRequested = pyqtSignal(object)  # Envía el objeto Licitacion o el N° de proceso
 
     def __init__(self, model, parent: QWidget | None = None, status_engine: Optional[StatusEngine] = None):
         super().__init__(parent)
@@ -72,8 +60,8 @@ class DashboardWindow(QWidget):
         self._dif_role: Optional[int] = DIFERENCIA_PCT_ROLE
 
         self._build_ui()
-        self._setup_models()    # <-- IMPORTANTE: Asigna el modelo antes de conectar señales
-        self._wire()            # <-- Ahora sí puedes conectar señales de selección
+        self._setup_models()    # Asigna el modelo antes de conectar señales
+        self._wire()            # Conexiones de señales
 
         self._populate_filter_values()
         self._apply_filters_to_both()
@@ -87,13 +75,13 @@ class DashboardWindow(QWidget):
         dlg.exec()
 
     def _wire(self):
-        # Conecta señales SOLO si selectionModel ya exista (después de setModel)
+        # Conecta señales SOLO si selectionModel ya existe (después de setModel)
         if self.tableActivas.selectionModel():
             self.tableActivas.selectionModel().selectionChanged.connect(self._sync_right_panel_with_selection)
         if self.tableFinalizadas.selectionModel():
             self.tableFinalizadas.selectionModel().selectionChanged.connect(self._sync_right_panel_with_selection)
         self.tabs.currentChanged.connect(self._sync_right_panel_with_selection)
-        
+
         # Conexiones de filtros
         self.searchEdit.textChanged.connect(self._debounce.start)
         self.loteEdit.textChanged.connect(self._debounce.start)
@@ -101,54 +89,61 @@ class DashboardWindow(QWidget):
         self.empresaCombo.currentIndexChanged.connect(self._apply_filters_to_both)
         self.clearBtn.clicked.connect(self._clear_filters)
         self._debounce.timeout.connect(self._apply_filters_to_both)
-        
+
         # Conexión para KPIs
         self.tabs.currentChanged.connect(self._on_tab_changed)
-        
+
         # Conexión para doble clic (abrir detalle)
         self.tableActivas.doubleClicked.connect(self._on_double_click)
         self.tableFinalizadas.doubleClicked.connect(self._on_double_click)
 
-
     def _build_ui(self):
         root = QVBoxLayout(self)
-        root.setContentsMargins(8, 8, 8, 8)
-        root.setSpacing(8)
+        root.setContentsMargins(10, 10, 10, 10)
+        root.setSpacing(10)
 
-        # Grupo Filtros y Búsqueda (no fijar altura aquí)
+        # ----------------- Grupo Filtros y Búsqueda -----------------
         self.filtersGroup = QGroupBox("Filtros y Búsqueda", self)
         self.filtersGroup.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         fg_h = QHBoxLayout(self.filtersGroup)
-        fg_h.setContentsMargins(8, 8, 8, 8)
-        fg_h.setSpacing(12)
+        fg_h.setContentsMargins(10, 10, 10, 10)
+        fg_h.setSpacing(16)
 
         # Filtros (izquierda)
         filters_layout = QGridLayout()
-        filters_layout.setHorizontalSpacing(8)
-        filters_layout.setVerticalSpacing(4)
+        filters_layout.setHorizontalSpacing(10)
+        filters_layout.setVerticalSpacing(6)
 
         self.searchEdit = QLineEdit()
         self.loteEdit = QLineEdit()
-        self.estadoCombo = QComboBox(); self.estadoCombo.addItem("Todos")
-        self.empresaCombo = QComboBox(); self.empresaCombo.addItem("Todas")
+        self.estadoCombo = QComboBox()
+        self.estadoCombo.addItem("Todos")
+        self.empresaCombo = QComboBox()
+        self.empresaCombo.addItem("Todas")
 
-        filters_layout.addWidget(QLabel("Buscar Proceso:"), 0, 0)
-        filters_layout.addWidget(self.searchEdit,          0, 1)
-        filters_layout.addWidget(QLabel("Contiene Lote:"),  0, 2)
-        filters_layout.addWidget(self.loteEdit,            0, 3)
-        filters_layout.addWidget(QLabel("Estado:"),         1, 0)
-        filters_layout.addWidget(self.estadoCombo,         1, 1)
-        filters_layout.addWidget(QLabel("Empresa:"),        1, 2)
-        filters_layout.addWidget(self.empresaCombo,        1, 3)
+        lbl_buscar = QLabel("Buscar Proceso:")
+        lbl_lote = QLabel("Contiene Lote:")
+        lbl_estado = QLabel("Estado:")
+        lbl_empresa = QLabel("Empresa:")
 
-        self.searchEdit.setMinimumWidth(140)
-        self.loteEdit.setMinimumWidth(100)
-        self.estadoCombo.setMinimumWidth(110)
-        self.empresaCombo.setMinimumWidth(120)
+        filters_layout.addWidget(lbl_buscar, 0, 0)
+        filters_layout.addWidget(self.searchEdit, 0, 1)
+        filters_layout.addWidget(lbl_lote, 0, 2)
+        filters_layout.addWidget(self.loteEdit, 0, 3)
+        filters_layout.addWidget(lbl_estado, 1, 0)
+        filters_layout.addWidget(self.estadoCombo, 1, 1)
+        filters_layout.addWidget(lbl_empresa, 1, 2)
+        filters_layout.addWidget(self.empresaCombo, 1, 3)
+
+        self.searchEdit.setMinimumWidth(180)
+        self.loteEdit.setMinimumWidth(120)
+        self.estadoCombo.setMinimumWidth(130)
+        self.empresaCombo.setMinimumWidth(150)
 
         self.clearBtn = QPushButton("Limpiar Filtros")
-        self.clearBtn.setFixedWidth(110)
-        self.clearBtn.setFixedHeight(26)
+        self.clearBtn.setFixedHeight(28)
+        # Neutro; si quisieras que fuera "peligroso", podrías usar class="danger"
+        # self.clearBtn.setProperty("class", "danger")
         filters_layout.addWidget(self.clearBtn, 0, 4, 2, 1, alignment=Qt.AlignmentFlag.AlignTop)
 
         fg_h.addLayout(filters_layout, 5)
@@ -165,22 +160,23 @@ class DashboardWindow(QWidget):
         self.nextDueArea.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.nextDueArea.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.nextDueArea.setTextFormat(Qt.TextFormat.RichText)
+        # Tarjeta estilo Titanium (Primary-50 + borde neutro)
         self.nextDueArea.setStyleSheet("""
-            background: #e3f2fd;
-            color: #263238;
-            padding: 16px;
-            border-radius: 7px;
+            background-color: #EFF6FF;
+            color: #111827;
+            padding: 12px;
+            border-radius: 6px;
             font-size: 13px;
-            font-weight: 500;
+            border: 1px solid #D1D5DB;
         """)
-        self.nextDueArea.setMinimumHeight(60)
+        self.nextDueArea.setMinimumHeight(70)
 
         right.addWidget(self.nextDueTitle, alignment=Qt.AlignmentFlag.AlignLeft)
         right.addWidget(self.nextDueArea, 1)
 
-        fg_h.addLayout(right, 8)
+        fg_h.addLayout(right, 4)
 
-        # Tabs (listado)
+        # ----------------- Tabs (listado) -----------------
         self.tabs = QTabWidget()
         self.tableActivas = QTableView()
         self.tableFinalizadas = QTableView()
@@ -199,26 +195,43 @@ class DashboardWindow(QWidget):
         self.tabs.addTab(self.tableActivas, "Licitaciones Activas (0)")
         self.tabs.addTab(self.tableFinalizadas, "Licitaciones Finalizadas (0)")
 
-        # KPIs
+        # ----------------- KPIs -----------------
         kpi_bar = QHBoxLayout()
+        kpi_bar.setSpacing(16)
+
         self.kpiScope = QLabel("Activas: 0")
         self.kpiGanadas = QLabel("Ganadas: 0")
         self.kpiLotesGanados = QLabel("Lotes Ganados: 0")
         self.kpiPerdidas = QLabel("Perdidas: 0")
+
+        # Estilo Titanium para KPIs: tipografía y colores
+        for w in (self.kpiScope, self.kpiGanadas, self.kpiLotesGanados, self.kpiPerdidas):
+            font = w.font()
+            font.setPointSize(11)
+            font.setBold(True)
+            w.setFont(font)
+
+        self.kpiScope.setStyleSheet("color: #111827;")        # Neutral
+        self.kpiGanadas.setStyleSheet("color: #16A34A;")      # Verde
+        self.kpiLotesGanados.setStyleSheet("color: #0E4F70;") # Azul primario fuerte
+        self.kpiPerdidas.setStyleSheet("color: #DC2626;")     # Rojo
+
         for w in (self.kpiScope, self.kpiGanadas, self.kpiLotesGanados, self.kpiPerdidas):
             kpi_bar.addWidget(w)
         kpi_bar.addStretch(1)
 
-        # Splitter vertical: arriba filtros, abajo tabs+KPIs
+        # ----------------- Splitter vertical -----------------
         self._mainSplitter = QSplitter(Qt.Orientation.Vertical, self)
 
         top_w = QWidget(self)
-        top_l = QVBoxLayout(top_w); top_l.setContentsMargins(0, 0, 0, 0)
+        top_l = QVBoxLayout(top_w)
+        top_l.setContentsMargins(0, 0, 0, 0)
         top_l.addWidget(self.filtersGroup)
         self._mainSplitter.addWidget(top_w)
 
         bottom_w = QWidget(self)
-        bottom_l = QVBoxLayout(bottom_w); bottom_l.setContentsMargins(0, 0, 0, 0)
+        bottom_l = QVBoxLayout(bottom_w)
+        bottom_l.setContentsMargins(0, 0, 0, 0)
         bottom_l.addWidget(self.tabs, 1)
         bottom_l.addLayout(kpi_bar)
         self._mainSplitter.addWidget(bottom_w)
@@ -247,12 +260,8 @@ class DashboardWindow(QWidget):
             pass
         super().closeEvent(event)
 
-
-
     def _setup_models(self):
         # Asume que self._model es tu LicitacionesTableModel
-        from app.ui.models.status_proxy_model import StatusFilterProxyModel
-
         self._proxyActivas = StatusFilterProxyModel(show_finalizadas=False, status_engine=self._status)
         self._proxyActivas.setSourceModel(self._model)
         self.tableActivas.setModel(self._proxyActivas)
@@ -273,7 +282,6 @@ class DashboardWindow(QWidget):
                 tv.hideColumn(8)  # Lotes
             except Exception:
                 pass
-            # Asegurar que el header muestre el texto
             hh = tv.horizontalHeader()
             try:
                 hh.setHighlightSections(False)
@@ -281,23 +289,28 @@ class DashboardWindow(QWidget):
                 hh.setMinimumSectionSize(60)
             except Exception:
                 pass
-            # Ancho inicial amigable para "Estatus"
             try:
                 tv.setColumnWidth(7, 140)
             except Exception:
                 pass
 
         # Delegates
-        self.apply_delegates(docs_col=4, dif_col=5,
-                             docs_role=DOCS_PROGRESS_ROLE, dif_role=DIFERENCIA_PCT_ROLE,
-                             heat_neg_range=30.0, heat_pos_range=30.0, heat_alpha=90, heat_invert=False)
+        self.apply_delegates(
+            docs_col=4,
+            dif_col=5,
+            docs_role=DOCS_PROGRESS_ROLE,
+            dif_role=DIFERENCIA_PCT_ROLE,
+            heat_neg_range=30.0,
+            heat_pos_range=30.0,
+            heat_alpha=90,
+            heat_invert=False,
+        )
 
         # Orden inicial
         self.tableActivas.sortByColumn(0, Qt.SortOrder.AscendingOrder)
         self.tableFinalizadas.sortByColumn(0, Qt.SortOrder.AscendingOrder)
 
         # Selección para panel derecho
-        # ¡IMPORTANTE! Siempre conecta la señal después de setModel
         self.tableActivas.selectionModel().selectionChanged.connect(self._on_selection_changed)
         self.tableFinalizadas.selectionModel().selectionChanged.connect(self._on_selection_changed)
 
@@ -306,7 +319,8 @@ class DashboardWindow(QWidget):
         self.tableFinalizadas.horizontalHeader().sectionResized.connect(lambda *_: self._schedule_save_settings())
         self.tableActivas.horizontalHeader().sortIndicatorChanged.connect(lambda *_: self._schedule_save_settings())
         self.tableFinalizadas.horizontalHeader().sortIndicatorChanged.connect(lambda *_: self._schedule_save_settings())
-        
+
+
     def _populate_filter_values(self):
         estados = set()
         empresas = set()

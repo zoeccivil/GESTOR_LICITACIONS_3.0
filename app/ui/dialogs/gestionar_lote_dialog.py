@@ -31,17 +31,21 @@ class GestionarLoteDialog(QDialog):
         title: str = "Gestionar Lote",
         initial_data: Optional[Lote] = None,
         participating_companies: Optional[List[str]] = None,
+        licitacion=None,
+        db_adapter=None,
     ):
         super().__init__(parent)
         self.setWindowTitle(title)
+
         self.initial_data = initial_data
-        # Aceptar también lista pasada accidentalmente como primer arg (defensivo)
-        if isinstance(initial_data, list) and participating_companies is None:
-            participating_companies = initial_data
-            self.initial_data = None
         self.participating_companies = participating_companies or []
+
+        # 🔐 NUEVOS ATRIBUTOS
+        self.licitacion = licitacion
+        self.db_adapter = db_adapter
+
         self.resultado: Optional[Dict[str, Any]] = None
-        self._lote_obj: Optional[Lote] = None  # para acceso directo
+        self._lote_obj: Optional[Lote] = None
 
         self._build_ui()
         self._load_initial_data()
@@ -184,7 +188,31 @@ class GestionarLoteDialog(QDialog):
                 "empresa_nuestra": lote.empresa_nuestra,
                 "id": getattr(lote, "id", None),
             }
+
+            # 🔐 CANDADO: sincronizar y guardar automáticamente
+            try:
+                if self.licitacion and hasattr(self.licitacion, "lotes"):
+                    for idx, l in enumerate(self.licitacion.lotes):
+                        if getattr(l, "id", None) == lote.id:
+                            self.licitacion.lotes[idx] = lote
+                            break
+                    else:
+                        # Si no existía, lo agregamos
+                        self.licitacion.lotes.append(lote)
+
+                if self.db_adapter:
+                    print("[AUTO-SAVE] Guardando licitación en Firebase desde GestionarLoteDialog")
+                    self.db_adapter.save_licitacion(self.licitacion)
+
+            except Exception as ex:
+                QMessageBox.critical(
+                    self,
+                    "Error al guardar",
+                    f"El lote se guardó localmente, pero falló el guardado en Firebase:\n{ex}",
+                )
+
             self.accept()
+
         except Exception as e:
             QMessageBox.critical(self, "Error", f"No se pudo construir el lote:\n{e}")
             self.resultado = None

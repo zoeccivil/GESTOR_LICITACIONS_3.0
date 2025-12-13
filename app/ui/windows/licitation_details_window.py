@@ -1,8 +1,20 @@
+
 # app/ui/windows/licitation_details_window.py
 from __future__ import annotations
 import sys
 import re
+import json
 from typing import Optional, Callable, Any, List
+from collections import deque
+from datetime import datetime
+from PyQt6.QtWidgets import QListWidget, QGroupBox, QVBoxLayout
+from PyQt6.QtWidgets import (
+    QGroupBox, QHBoxLayout, QVBoxLayout, QLabel, QPushButton,
+    QLineEdit, QComboBox, QSizePolicy, QListWidget
+)
+from PyQt6.QtWidgets import QStyle
+
+
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QTabWidget, QDialogButtonBox, QMessageBox, QWidget,
@@ -17,6 +29,7 @@ from app.core.models import Licitacion, Empresa, Lote, Documento
 from app.core.db_adapter import DatabaseAdapter
 
 # Pestañas
+from app.core.utils import normalize_lote_numero
 from app.ui.tabs.tab_details_general import TabDetailsGeneral
 from app.ui.tabs.tab_lotes import TabLotes
 from app.ui.tabs.tab_competitors import TabCompetitors  # Import correcto (sin alias extraño)
@@ -27,6 +40,8 @@ from app.ui.dialogs.dialogo_gestionar_instituciones import DialogoGestionarInsti
 from app.ui.dialogs.seleccionar_empresas_dialog import SeleccionarEmpresasDialog
 from app.core.log_utils import get_logger
 logger = get_logger("licitation_details_window")
+from app.core.utils import normalize_lote_numero
+
 
 class LicitationDetailsWindow(QDialog):
     """
@@ -124,58 +139,208 @@ class LicitationDetailsWindow(QDialog):
         # Tema y persistencia
         self._apply_theme()
         self._restore_ui_state()
+        self._dirty = False
+        self._saving = False
 
-    # -------------------- UI: Header --------------------
+        # 🔒 lock de edición por contador (no booleano)
+        self._edit_locks: dict[str, int] = {}
+
+        # ⏱️ autosave con debounce
+        self._autosave_timer = QTimer(self)
+        self._autosave_timer.setSingleShot(True)
+        self._autosave_timer.timeout.connect(self._autosave_if_needed)
+
+        # ⏱️ delay recomendado (7 segundos)
+        self._autosave_delay_ms = 7000
+
+        # 🔁 snapshot hash
+        self._last_snapshot = self._snapshot_model()
+
+
+        self._change_log = deque(maxlen=200)
+
+
+
+
+
+    def mark_dirty(self, source: str = ""):
+        if self._saving:
+            return
+
+        if not self._dirty:
+            print(f"[DIRTY] Cambios detectados ({source})")
+
+        self._dirty = True
+        self._enable_save_continue_button()
+
+        # ⏱️ reiniciar debounce de autosave
+        self._autosave_timer.start(self._autosave_delay_ms)
+
+
+
+# -------------------- UI: Header --------------------
     def _build_header_panel(self, parent_layout: QVBoxLayout):
+        from PyQt6.QtWidgets import QGridLayout
+
         self.group_header = QGroupBox("Datos Iniciales")
-        h = QHBoxLayout(self.group_header)
+
+        # 🔒 Header compacto (no estira la ventana)
+        self.group_header.setMaximumHeight(180)
+        self.group_header.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed
+        )
+
+        h = QGridLayout(self.group_header)
         h.setContentsMargins(8, 8, 8, 8)
+        h.setHorizontalSpacing(10)
+        h.setVerticalSpacing(6)
+
         style = self.style()
 
+        # =========================================================
         # A. Institución
+        # =========================================================
         self.boxA = QGroupBox("A. Institución")
         la = QHBoxLayout(self.boxA)
+        la.setContentsMargins(6, 6, 6, 6)
+
         self.txt_institucion = QLineEdit()
         self.txt_institucion.setPlaceholderText("Ninguna seleccionada…")
         self.txt_institucion.setReadOnly(True)
-        self.txt_institucion.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        la.addWidget(self.txt_institucion, stretch=1)
+        self.txt_institucion.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed
+        )
+        la.addWidget(self.txt_institucion)
 
         self.btn_sel_inst = QPushButton(" Seleccionar…")
-        self.btn_sel_inst.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton))
+        self.btn_sel_inst.setIcon(
+            style.standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton)
+        )
         self.btn_sel_inst.clicked.connect(self._abrir_selector_institucion)
         la.addWidget(self.btn_sel_inst)
 
         self.btn_gestionar_inst = QPushButton(" Gestionar…")
-        self.btn_gestionar_inst.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView))
+        self.btn_gestionar_inst.setIcon(
+            style.standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView)
+        )
         self.btn_gestionar_inst.clicked.connect(self._abrir_gestionar_instituciones)
         la.addWidget(self.btn_gestionar_inst)
 
-        h.addWidget(self.boxA, stretch=3)
-
-        # B. Empresas
+        # =========================================================
+        # B. Empresas Propias
+        # =========================================================
         self.boxB = QGroupBox("B. Empresas Propias")
         lb = QHBoxLayout(self.boxB)
+        lb.setContentsMargins(6, 6, 6, 6)
+
         self.lbl_empresas = QLabel("Ninguna seleccionada")
         self.lbl_empresas.setWordWrap(True)
-        lb.addWidget(self.lbl_empresas, stretch=1)
+        self.lbl_empresas.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred
+        )
+        lb.addWidget(self.lbl_empresas)
 
         self.btn_sel_empresas = QPushButton(" Seleccionar…")
-        self.btn_sel_empresas.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_DialogApplyButton))
+        self.btn_sel_empresas.setIcon(
+            style.standardIcon(QStyle.StandardPixmap.SP_DialogApplyButton)
+        )
         self.btn_sel_empresas.clicked.connect(self._abrir_selector_empresas)
         lb.addWidget(self.btn_sel_empresas)
-        h.addWidget(self.boxB, stretch=3)
 
-        # C. Kit
+        # =========================================================
+        # C. Kit de Requisitos
+        # =========================================================
         self.boxC = QGroupBox("C. Kit de Requisitos")
         lc = QHBoxLayout(self.boxC)
+        lc.setContentsMargins(6, 6, 6, 6)
+
         self.combo_kit = QComboBox()
         self.combo_kit.addItem(" (Ninguno) ")
         self.combo_kit.setEnabled(False)
+        self.combo_kit.setMinimumWidth(150)
+        self.combo_kit.setMaximumWidth(220)
         lc.addWidget(self.combo_kit)
-        h.addWidget(self.boxC, stretch=2)
 
+        # =========================================================
+        # D. Cambios Pendientes (Logger Visual COLAPSABLE)
+        # =========================================================
+        self.boxD = QGroupBox("D. Cambios Pendientes")
+        self.boxD.setMaximumWidth(300)
+
+        ld = QVBoxLayout(self.boxD)
+        ld.setContentsMargins(6, 6, 6, 6)
+        ld.setSpacing(4)
+
+        # --- Header del logger (título + botón)
+        header_row = QHBoxLayout()
+        header_row.setContentsMargins(0, 0, 0, 0)
+
+        lbl_title = QLabel("Cambios pendientes")
+        lbl_title.setStyleSheet("font-weight: 600;")
+        header_row.addWidget(lbl_title)
+
+        header_row.addStretch()
+
+        self.btn_toggle_logger = QPushButton("▸")
+        self.btn_toggle_logger.setFixedSize(22, 22)
+        self.btn_toggle_logger.setToolTip("Mostrar / ocultar cambios")
+        self.btn_toggle_logger.setCheckable(True)
+        self.btn_toggle_logger.setChecked(False)
+        header_row.addWidget(self.btn_toggle_logger)
+
+        ld.addLayout(header_row)
+
+        # --- Contenedor colapsable
+        self.logger_container = QWidget()
+        logger_layout = QVBoxLayout(self.logger_container)
+        logger_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.list_change_log = QListWidget()
+        self.list_change_log.setMinimumHeight(90)
+        self.list_change_log.setMinimumWidth(220)
+        self.list_change_log.setMaximumWidth(260)
+        self.list_change_log.setToolTip(
+            "Cambios realizados que aún no se han guardado en la base de datos"
+        )
+
+        logger_layout.addWidget(self.list_change_log)
+        ld.addWidget(self.logger_container)
+
+        # --- Estado inicial: colapsado
+        self.logger_container.setVisible(False)
+        self.boxD.setMaximumHeight(60)
+
+        # --- Toggle logic
+        def _toggle_logger(expanded: bool):
+            self.logger_container.setVisible(expanded)
+            self.btn_toggle_logger.setText("▾" if expanded else "▸")
+            self.boxD.setMaximumHeight(160 if expanded else 60)
+
+        self.btn_toggle_logger.toggled.connect(_toggle_logger)
+
+
+        # =========================================================
+        # Layout compacto (GRID)
+        # =========================================================
+        h.addWidget(self.boxA, 0, 0)
+        h.addWidget(self.boxB, 0, 1)
+        h.addWidget(self.boxC, 0, 2)
+        h.addWidget(self.boxD, 0, 3)
+
+        # 🔧 Control fino de anchuras
+        h.setColumnStretch(0, 2)  # Institución
+        h.setColumnStretch(1, 2)  # Empresas
+        h.setColumnStretch(2, 1)  # Kit
+        h.setColumnStretch(3, 1)  # Logger
+
+        # =========================================================
+        # Insertar header en layout padre
+        # =========================================================
         parent_layout.addWidget(self.group_header)
+
 
     def _set_initial_data_enabled(self, enabled: bool):
         self.group_header.setEnabled(enabled)
@@ -502,17 +667,32 @@ class LicitationDetailsWindow(QDialog):
             self.combo_kit.setEnabled(False)
 
     # -------------------- Tabs load/collect --------------------
+    # -------------------- Tabs load/collect --------------------
     def _load_data_into_tabs(self):
+        """
+        Carga el modelo en las pestañas.
+
+        Nota: la lógica de colores de diferencias (% Dif. Licit. / % Dif. Pers.)
+        ahora vive dentro de TabLotes, por lo que no se aplica ningún
+        post-proceso adicional aquí.
+        """
         try:
             self.tab_general.load_data()
+
+            # 🔴 CLAVE: reinyectar el modelo actual
+            self.tab_lotes.set_licitacion(self.licitacion)
             self.tab_lotes.load_data()
+
             self.tab_competitors.load_data()
-            # Post-procesos tras cargar
+
+            # Post-procesos tras cargar (solo fechas por defecto, etc.)
             self._fix_default_dates_if_needed()
-            self._postprocess_lotes_diff_colors()
         except Exception as e:
-            QMessageBox.critical(self, "Error al Cargar Pestañas",
-                                 f"No se pudieron cargar completamente los datos en las pestañas:\n{e}")
+            QMessageBox.critical(
+                self,
+                "Error al Cargar Pestañas",
+                f"No se pudieron cargar completamente los datos en las pestañas:\n{e}",
+            )
 
     def _collect_data_from_header(self):
         # Empresas -> modelo (el header debe prevalecer en creación; en edición no bloquea el tab)
@@ -718,95 +898,29 @@ class LicitationDetailsWindow(QDialog):
                 pass
 
     # -------------------- Lotes: colorear texto en % Dif --------------------
-    def _try_get_lotes_table(self) -> Optional[QTableWidget]:
-        # Atributos comunes
-        for cand in ("tabla_lotes", "table_lotes", "tbl_lotes", "tabla", "tableWidget", "tablaLotes"):
-            if hasattr(self.tab_lotes, cand):
-                obj = getattr(self.tab_lotes, cand)
-                if isinstance(obj, QTableWidget):
-                    return obj
-        # Búsqueda por tipo
-        tables = self.tab_lotes.findChildren(QTableWidget)
-        return tables[0] if tables else None
-
-    def _find_diff_columns(self, table: QTableWidget) -> tuple[Optional[int], Optional[int]]:
-        lict_col = None
-        pers_col = None
-        cols = table.columnCount()
-        for i in range(cols):
-            itm = table.horizontalHeaderItem(i)
-            txt = (itm.text() if itm else "").lower()
-            if "% dif" in txt and ("lict" in txt or "lici" in txt):
-                lict_col = i
-            if "% dif" in txt and ("pers" in txt or "perso" in txt or "personal" in txt):
-                pers_col = i
-        return lict_col, pers_col
-
-    def _parse_percent_value(self, s: str) -> Optional[float]:
-        if not s:
-            return None
-        # Extrae primer número (con , o .) y signo
-        m = re.search(r"-?\d+(?:[.,]\d+)?", s.replace(" ", ""))
-        if not m:
-            return None
-        raw = m.group(0)
-        # Normalizar: quitar miles y usar punto como decimal
-        raw = raw.replace(".", "").replace(",", ".")
-        try:
-            return float(raw)
-        except Exception:
-            return None
-
-    def _postprocess_lotes_diff_colors(self):
-        table = self._try_get_lotes_table()
-        if not table or table.rowCount() == 0 or table.columnCount() == 0:
-            return
-        lict_col, pers_col = self._find_diff_columns(table)
-        for col in (lict_col, pers_col):
-            if col is None:
-                continue
-            for r in range(table.rowCount()):
-                item = table.item(r, col)
-                if not item:
-                    continue
-                # Tomar color previo de fondo si existía (mantener señal semántica)
-                bg_brush = item.background()
-                bg_color: Optional[QColor] = None
-                try:
-                    bg_color = bg_brush.color() if bg_brush is not None else None
-                except Exception:
-                    bg_color = None
-
-                # Limpiar fondo
-                try:
-                    item.setBackground(QBrush(Qt.GlobalColor.transparent))
-                except Exception:
-                    pass
-
-                # Calcular por signo si no había color previo
-                fcolor: Optional[QColor] = None
-                if bg_color and bg_color.isValid():
-                    fcolor = bg_color
-                else:
-                    val = self._parse_percent_value(item.text() or "")
-                    if val is not None:
-                        if val >= 0:
-                            # verde suave para positivo
-                            fcolor = QColor(0, 160, 0)
-                        else:
-                            # rojo suave para negativo
-                            fcolor = QColor(200, 0, 0)
-                if fcolor:
-                    try:
-                        item.setForeground(QBrush(fcolor))
-                    except Exception:
-                        pass
 
     def _on_tab_changed(self, idx: int):
-        # Reaplicar post-proceso al entrar a Lotes
-        w = self.tab_widget.widget(idx)
-        if w is self.tab_lotes:
-            QTimer.singleShot(0, self._postprocess_lotes_diff_colors)
+        """
+        Maneja cambios de pestaña.
+
+        Antes se reaplicaba un post-proceso de colores sobre la tabla de lotes
+        (_postprocess_lotes_diff_colors), pero esa lógica ahora está contenida
+        íntegramente dentro de TabLotes, para evitar conflictos con el tema
+        Titanium Construct.
+        """
+        # Si en el futuro necesitas lógica al cambiar de pestaña, colócala aquí.
+        _ = self.tab_widget.widget(idx)
+        return
+
+
+    def _ensure_empresa_nuestra_consistency(self):
+        nombres = {e.nombre for e in self.licitacion.empresas_nuestras}
+
+        for lote in self.licitacion.lotes:
+            if lote.empresa_nuestra and lote.empresa_nuestra not in nombres:
+                self.licitacion.empresas_nuestras.append(
+                    Empresa(nombre=lote.empresa_nuestra)
+                )
 
     # -------------------- Validación / Normalización --------------------
     def _normalize_model(self):
@@ -863,7 +977,7 @@ class LicitationDetailsWindow(QDialog):
                     lotes_norm.append(
                         Lote(
                             id=l.get("id"),
-                            numero=str(l.get("numero") or ""),
+                            numero=normalize_lote_numero(l.get("numero")),
                             nombre=l.get("nombre", ""),
                             monto_base=float(l.get("monto_base", 0.0) or 0.0),
                             monto_base_personal=float(l.get("monto_base_personal", 0.0) or 0.0),
@@ -931,8 +1045,7 @@ class LicitationDetailsWindow(QDialog):
             print(f"   numero={l.numero!r}, empresa_nuestra={l.empresa_nuestra!r}, "
                   f"monto_ofertado={l.monto_ofertado}, participamos={l.participamos}, "
                   f"fase_A_superada={l.fase_A_superada}, ganador={l.ganador_nombre}, "
-                  f"ganado_por_nosotros={l.ganado_por_nosotros}")
-            
+                  f"ganado_por_nosotros={l.ganado_por_nosotros}")            
                         
     def _validate_before_save(self) -> bool:
         # Institución
@@ -1119,42 +1232,96 @@ class LicitationDetailsWindow(QDialog):
 
     # -------------------- Botones Guardar --------------------
     def _save_and_continue(self):
-        # 1) Pestañas -> modelo
-        if not self._collect_data_from_tabs():
-            return
-        # 2) Header -> modelo (override en creación si procede)
-        self._collect_data_from_header()
-        self._normalize_model()
-        if not self._validate_before_save():
-            return
-        if self._save_changes():
-            self.btn_save_continue.setText("¡Guardado!")
-            self.btn_save_continue.setEnabled(False)
-            QTimer.singleShot(1500, self._enable_save_continue_button)
+        print("[DEBUG][LicitationDetailsWindow] Save & Continue")
+
+        if self._perform_save(close_after=False):
             self._load_data_into_tabs()
-            # Tras recargar, asegurar post-procesos
-            self._postprocess_lotes_diff_colors()
-            # Si recién se creó y ahora hay ID, hacer visible Eliminar
-            if getattr(self.licitacion, "id", None) and not self.btn_delete.isVisible():
-                self.btn_delete.setVisible(True)
+
+
+
 
     def _enable_save_continue_button(self):
+        # 🔒 Si hay guardado activo o locks, deshabilitar
+        if self._saving or self._edit_locks:
+            self.btn_save_continue.setEnabled(False)
+            return
+
         self.btn_save_continue.setText("Guardar y Continuar")
         self.btn_save_continue.setEnabled(True)
 
     def _save_and_close(self):
-        if not self._collect_data_from_tabs():
-            return
-        self._collect_data_from_header()
+        print("[DEBUG][LicitationDetailsWindow] Save & Close iniciado")
+
+        tabs = [
+            self.tab_general,
+            self.tab_lotes,
+            self.tab_competitors,
+        ]
+
+        for tab in tabs:
+            if hasattr(tab, "collect_data"):
+                print(f"[DEBUG] collect_data() -> {tab.__class__.__name__}")
+                tab.collect_data()
+
         self._normalize_model()
-        if not self._validate_before_save():
-            return
-        if self._save_changes():
-            # Si recién se creó y ahora hay ID, permitir eliminación
-            if getattr(self.licitacion, "id", None) and not self.btn_delete.isVisible():
-                self.btn_delete.setVisible(True)
-            self.resultado = self.licitacion
-            self.accept()
+
+        self.db.save_licitacion(self.licitacion)
+        self._change_log.clear()
+        self._refresh_change_logger()
+
+
+        self.close()
+
+
+    def _snapshot_model(self) -> int:
+        """
+        Snapshot rápido basado en hash.
+        Suficiente para detectar cambios reales.
+        """
+        try:
+            parts = []
+
+            parts.append(self.licitacion.numero_proceso or "")
+            parts.append(self.licitacion.nombre_proceso or "")
+            parts.append(self.licitacion.institucion or "")
+
+            for e in getattr(self.licitacion, "empresas_nuestras", []) or []:
+                parts.append(getattr(e, "nombre", str(e)))
+
+            for l in getattr(self.licitacion, "lotes", []) or []:
+                parts.extend([
+                    str(l.id),
+                    str(l.numero),
+                    l.nombre or "",
+                    str(l.monto_base),
+                    str(l.monto_base_personal),
+                    str(l.monto_ofertado),
+                    str(l.participamos),
+                    str(l.fase_A_superada),
+                    l.ganador_nombre or "",
+                    str(l.ganado_por_nosotros),
+                    l.empresa_nuestra or "",
+                ])
+
+            return hash("|".join(parts))
+
+        except Exception as e:
+            print("[WARN] Snapshot falló:", e)
+            return 0
+
+
+    def lock_edit(self, source: str = ""):
+        self._edit_locks[source] = self._edit_locks.get(source, 0) + 1
+        print(f"[LOCK] {source} → {self._edit_locks[source]}")
+
+    def unlock_edit(self, source: str = ""):
+        if source in self._edit_locks:
+            self._edit_locks[source] -= 1
+            if self._edit_locks[source] <= 0:
+                del self._edit_locks[source]
+            print(f"[UNLOCK] {source}")
+
+
 
     # -------------------- Resultado property --------------------
     @property
@@ -1168,3 +1335,111 @@ class LicitationDetailsWindow(QDialog):
     def reject(self):
         self.resultado = None
         super().reject()
+
+
+
+    def _autosave_if_needed(self):
+        """
+        Autosave diferido. Solo guarda si:
+        - hay cambios (_dirty)
+        - no se está guardando
+        - no hay locks activos
+        """
+        if not self._dirty:
+            return
+
+        if self._saving:
+            print("[AUTOSAVE] Guardado en progreso, se omite")
+            return
+
+        if self._edit_locks:
+            print("[AUTOSAVE] Locks activos, se omite:", self._edit_locks)
+            return
+
+        print("[AUTOSAVE] Ejecutando autosave…")
+        self._perform_save(close_after=False)
+
+
+
+    def _perform_save(self, close_after: bool = False) -> bool:
+        # 🔒 Evitar doble guardado simultáneo
+        if self._saving:
+            print("[LOCK] Guardado ya en progreso")
+            return False
+
+        # 🔒 Evitar guardar si hay locks activos
+        if self._edit_locks:
+            print("[LOCK] Edición bloqueada, no se guarda:", self._edit_locks)
+            return False
+
+        # 1. Recolectar datos desde las pestañas
+        tabs = [self.tab_general, self.tab_lotes, self.tab_competitors]
+        for tab in tabs:
+            if hasattr(tab, "collect_data"):
+                if tab.collect_data() is False:
+                    return False
+
+        # 2. Normalizar modelo
+        self._normalize_model()
+
+        # 3. Validar antes de guardar
+        if not self._validate_before_save():
+            return False
+
+        # 4. Snapshot para detectar cambios reales
+        new_snapshot = self._snapshot_model()
+        if new_snapshot == self._last_snapshot:
+            print("[INFO] No hay cambios reales, se omite guardado")
+            self._dirty = False
+            return True
+
+        # 5. Guardar en base de datos
+        try:
+            self._saving = True
+
+            save_return = self.db.save_licitacion(self.licitacion)
+            self._ensure_licitacion_id_after_save(save_return)
+            self._persistir_ganadores_por_lote()
+
+            # Actualizar snapshot y estado
+            self._last_snapshot = new_snapshot
+            self._dirty = False
+
+            if self.refresh_callback:
+                try:
+                    self.refresh_callback()
+                except Exception:
+                    pass
+
+            try:
+                self.saved.emit(self.licitacion)
+            except Exception:
+                pass
+
+            print("[OK] Guardado exitoso")
+            return True
+
+        finally:
+            self._saving = False
+
+
+    def log_change(self, message: str):
+        ts = datetime.now().strftime("%H:%M:%S")
+        entry = f"[{ts}] {message}"
+
+        self._change_log.append(entry)
+
+        print(f"[LOGGER] {entry}")
+
+        # Refrescar UI si existe
+        if hasattr(self, "_refresh_change_logger"):
+            self._refresh_change_logger()
+
+
+    def _refresh_change_logger(self):
+        if not hasattr(self, "list_change_log"):
+            return
+
+        self.list_change_log.clear()
+        for entry in reversed(self._change_log):
+            self.list_change_log.addItem(entry)

@@ -4,6 +4,28 @@ import sys
 import json
 from typing import Any, Dict, Optional
 
+import re
+
+def normalize_lote_numero(raw: str | None) -> str:
+    """
+    Normaliza cualquier formato de número de lote a: 'LOTE X'
+    Ejemplos:
+    '1' -> 'LOTE 1'
+    'Lote 11' -> 'LOTE 11'
+    ' lote   3 ' -> 'LOTE 3'
+    """
+    if not raw:
+        return ""
+
+    s = str(raw).strip().upper()
+
+    m = re.search(r"(\d+)", s)
+    if not m:
+        return s
+
+    return f"LOTE {int(m.group(1))}"
+
+
 
 def as_dict(value: Any, default: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """

@@ -20,7 +20,7 @@ from .firebase_adapter import (
 )
 from .models import Documento, Empresa, Licitacion, Lote, Oferente
 from app.core.log_utils import get_logger
-
+from app.core.utils import normalize_lote_numero
 logger = get_logger("db_adapter")
 
 
@@ -376,6 +376,24 @@ class DatabaseAdapter:
     # ------------------------------------------------------------------
     # Auxiliar mappers
     # ------------------------------------------------------------------
+
+
+    def _map_lote_dict_to_model(self, data: Dict[str, Any]) -> Lote:
+        return Lote(
+            id=data.get("id"),
+            numero=normalize_lote_numero(data.get("numero")),
+            nombre=data.get("nombre", ""),
+            monto_base=float(data.get("monto_base", 0.0) or 0.0),
+            monto_base_personal=float(data.get("monto_base_personal", 0.0) or 0.0),
+            monto_ofertado=float(data.get("monto_ofertado", 0.0) or 0.0),
+            participamos=bool(data.get("participamos", True)),
+            fase_A_superada=bool(data.get("fase_A_superada", False)),
+            ganador_nombre=data.get("ganador_nombre", ""),
+            ganado_por_nosotros=bool(data.get("ganado_por_nosotros", False)),
+            empresa_nuestra=data.get("empresa_nuestra") or None,
+        )
+
+
     def _map_licitacion_dict_to_model(self, data: Dict[str, Any]) -> Licitacion:
         # DEBUG consola: ver cómo vienen los lotes crudos desde Firestore
         print("[DEBUG][DB._map_licitacion] Mapeando licitación desde dict. ID:",
@@ -445,21 +463,6 @@ class DatabaseAdapter:
             )
 
         return lic    
-
-    def _map_lote_dict_to_model(self, data: Dict[str, Any]) -> Lote:
-        return Lote(
-            id=data.get("id"),
-            numero=str(data.get("numero", "")),
-            nombre=data.get("nombre", ""),
-            monto_base=float(data.get("monto_base", 0.0) or 0.0),
-            monto_base_personal=float(data.get("monto_base_personal", 0.0) or 0.0),
-            monto_ofertado=float(data.get("monto_ofertado", 0.0) or 0.0),
-            participamos=bool(data.get("participamos", True)),
-            fase_A_superada=bool(data.get("fase_A_superada", True)),
-            ganador_nombre=data.get("ganador_nombre", ""),
-            ganado_por_nosotros=bool(data.get("ganado_por_nosotros", False)),
-            empresa_nuestra=data.get("empresa_nuestra"),
-        )
 
     def _map_documento_dict_to_model(self, data: Dict[str, Any]) -> Documento:
         return Documento(

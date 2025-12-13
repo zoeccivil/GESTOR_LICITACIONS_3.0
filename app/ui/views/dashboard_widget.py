@@ -4,7 +4,7 @@ from datetime import date, datetime, MAXYEAR
 from collections import Counter, defaultdict
 
 from PyQt6.QtCore import Qt, pyqtSignal, QDate
-from PyQt6.QtGui import QKeySequence, QShortcut, QGuiApplication, QPalette, QColor
+from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QLabel, QComboBox, QLineEdit,
     QPushButton, QDateEdit, QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox,
@@ -32,12 +32,13 @@ except Exception:
     mpl_cm = None
 
 from app.core.db_adapter import DatabaseAdapter
+    #
 from app.core.models import Licitacion, Documento
 
 
 class DashboardWidget(QWidget):
     """
-    Dashboard analítico con adaptación automática al tema activo (QPalette).
+    Dashboard analítico para el tema Titanium Construct.
     """
 
     # Señal para abrir detalles de licitación por ID (la usa MainWindow)
@@ -67,23 +68,25 @@ class DashboardWidget(QWidget):
     COL_FDET_INST = 2
     COL_FDET_TIPO = 3
 
-    # Colores por defecto (fallback si no hay paleta)
-    COLOR_BACKGROUND = "#1E1E1E"
-    COLOR_TEXT_PRIMARY = "#E6E9EF"
-    COLOR_TEXT_SECONDARY = "#B9C0CC"
-    COLOR_PARTICIPACIONES = "#3B82F6"  # acento por defecto
-    COLOR_GANADAS = "#22C55E"
-    COLOR_PERDIDAS = "#EF4444"
-    COLOR_EN_PROCESO = "#F59E0B"
-    COLOR_BORDER = "#3A4152"
-    COLOR_ALT = "#2B303B"
-    COLOR_BASE = "#262A33"
+    # Paleta Titanium Construct (modo claro)
+    COLOR_BACKGROUND = "#F3F4F6"        # Neutral-100 (fondo general)
+    COLOR_TEXT_PRIMARY = "#111827"      # Neutral-900
+    COLOR_TEXT_SECONDARY = "#6B7280"    # Neutral-500
+
+    COLOR_PARTICIPACIONES = "#155E75"   # Primary-500
+    COLOR_GANADAS = "#16A34A"           # Verde éxito
+    COLOR_PERDIDAS = "#DC2626"          # Rojo error
+    COLOR_EN_PROCESO = "#F59E0B"        # Ámbar
+
+    COLOR_BORDER = "#D1D5DB"            # Neutral-300
+    COLOR_ALT = "#E5E7EB"               # Neutral-200 (fondos suaves)
+    COLOR_BASE = "#FFFFFF"              # Blanco (tarjetas/tablas)
 
     def __init__(self, db: DatabaseAdapter, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.db = db
 
-        # Derivar colores desde el tema activo (QPalette)
+        # Ajustar QSS base para cajas/tarjetas
         self._resolve_theme_colors()
 
         # Estado datasets
@@ -144,64 +147,31 @@ class DashboardWidget(QWidget):
     # ----------------- Tema / Colores -----------------
     def _resolve_theme_colors(self):
         """
-        Lee los colores desde el tema activo (QPalette) y garantiza que TODO sean
-        cadenas #RRGGBB (no QBrush/QColor) para usarlos en rcParams y QSS.
+        Fija explícitamente la paleta Titanium Construct para el dashboard
+        y construye el QSS base de los QGroupBox.
         """
-        app = QGuiApplication.instance()
-        pal: QPalette = app.palette() if app else QPalette()
-
-        def hex_from_role(brush_or_color, fallback: str) -> str:
-            # QPalette.* devuelve QBrush en PyQt6; extrae QColor y devuelve .name()
-            try:
-                if hasattr(brush_or_color, "color"):
-                    c = brush_or_color.color()
-                    if isinstance(c, QColor):
-                        return c.name()
-                if isinstance(brush_or_color, QColor):
-                    return brush_or_color.name()
-            except Exception:
-                pass
-            return fallback
-
-        # Extraer como HEX (si falla, usa fallback actual)
-        accent_hex = hex_from_role(pal.highlight(), self.COLOR_PARTICIPACIONES)
-        text_hex = hex_from_role(pal.text(), self.COLOR_TEXT_PRIMARY)
-        window_hex = hex_from_role(pal.window(), self.COLOR_BACKGROUND)
-        base_hex = hex_from_role(pal.base(), self.COLOR_BASE)
-        alt_hex = hex_from_role(pal.alternateBase(), self.COLOR_ALT)
-        border_hex = hex_from_role(pal.mid(), self.COLOR_BORDER)
-
-        # placeholderText puede no existir; si existe es QBrush
-        if hasattr(pal, "placeholderText"):
-            text_sec_hex = hex_from_role(pal.placeholderText(), self.COLOR_TEXT_SECONDARY)
-        else:
-            # aproximar con un tono medio
-            text_sec_hex = hex_from_role(pal.mid(), self.COLOR_TEXT_SECONDARY)
-
-        # Asignar a las constantes usadas por el widget
-        self.COLOR_PARTICIPACIONES = accent_hex or self.COLOR_PARTICIPACIONES
-        self.COLOR_TEXT_PRIMARY = text_hex or self.COLOR_TEXT_PRIMARY
-        self.COLOR_TEXT_SECONDARY = text_sec_hex or self.COLOR_TEXT_SECONDARY
-        self.COLOR_BACKGROUND = window_hex or self.COLOR_BACKGROUND
-        self.COLOR_BASE = base_hex or self.COLOR_BASE
-        self.COLOR_ALT = alt_hex or self.COLOR_ALT
-        self.COLOR_BORDER = border_hex or self.COLOR_BORDER
-        # Mantener semánticos (ganadas/perdidas/proceso) como están para contraste.
-
-        # QSS base para cajas/tarjetas (reconstruir con los nuevos colores)
         self._BOX_QSS = (
-            f"QGroupBox,QFrame{{background:{self.COLOR_BASE};border:1px solid {self.COLOR_BORDER};"
-            f"border-radius:8px;padding:8px;}}"
-            f"QGroupBox::title{{left:8px;padding:0 4px;color:{self.COLOR_TEXT_SECONDARY};font-weight:600;}}"
+            "QGroupBox {"
+            f"  background-color: {self.COLOR_BASE};"
+            f"  border: 1px solid {self.COLOR_BORDER};"
+            "  border-radius: 8px;"
+            "  margin-top: 1.2em;"
+            "}"
+            "QGroupBox::title {"
+            "  subcontrol-origin: margin;"
+            "  subcontrol-position: top left;"
+            "  padding: 0 6px;"
+            f"  color: {self.COLOR_PARTICIPACIONES};"
+            "  font-weight: bold;"
+            "}"
         )
+
     def _tight_layout_safe(self, fig=None):
         """
         Ajusta el layout de manera segura para evitar excepciones de Matplotlib.
-        Si no se pasa 'fig', intenta usar la figura del primer canvas disponible.
         """
         try:
             if fig is None:
-                # Usa cualquier canvas disponible
                 if hasattr(self, "canvas_rend") and self.canvas_rend:
                     fig = self.canvas_rend.figure
                 elif hasattr(self, "canvas_estados") and self.canvas_estados:
@@ -212,13 +182,31 @@ class DashboardWidget(QWidget):
                 fig.tight_layout()
         except Exception:
             pass
+
     def _style_tabs(self, tabs: QTabWidget):
         tabs.setStyleSheet(
-            f"QTabWidget::pane{{border:1px solid {self.COLOR_BORDER};background:{self.COLOR_BASE};border-radius:6px;}}"
-            f"QTabBar::tab{{background:{self.COLOR_ALT};border:1px solid {self.COLOR_BORDER};padding:6px 12px;"
-            f"border-top-left-radius:6px;border-top-right-radius:6px;margin-right:2px;color:{self.COLOR_TEXT_SECONDARY};}}"
-            f"QTabBar::tab:selected{{color:{self.COLOR_TEXT_PRIMARY};background:{self.COLOR_BASE};"
-            f"border-bottom:1px solid {self.COLOR_BASE};}}"
+            "QTabWidget::pane {"
+            f"  border: 1px solid {self.COLOR_BORDER};"
+            f"  background: {self.COLOR_BASE};"
+            "  border-radius: 4px;"
+            "}"
+            "QTabBar::tab {"
+            f"  background: {self.COLOR_ALT};"
+            f"  color: {self.COLOR_TEXT_SECONDARY};"
+            "  padding: 6px 12px;"
+            "  border-top-left-radius: 4px;"
+            "  border-top-right-radius: 4px;"
+            "  margin-right: 2px;"
+            "}"
+            "QTabBar::tab:selected {"
+            f"  background: {self.COLOR_BASE};"
+            f"  color: {self.COLOR_PARTICIPACIONES};"
+            "  font-weight: bold;"
+            f"  border-top: 3px solid {self.COLOR_PARTICIPACIONES};"
+            "}"
+            "QTabBar::tab:hover:!selected {"
+            f"  background: {self.COLOR_ALT};"
+            "}"
         )
 
     # ----------------- Matplotlib -----------------
@@ -274,46 +262,41 @@ class DashboardWidget(QWidget):
         self.dt_hasta.setDate(QDate.currentDate())
         h.addWidget(self.dt_hasta)
 
-        self.btn_aplicar = QPushButton("🔍 Aplicar")
+        # Botón Aplicar: acción principal → primary
+        self.btn_aplicar = QPushButton("Aplicar")
         self.btn_aplicar.clicked.connect(self._apply_filters_and_render)
-        self.btn_aplicar.setStyleSheet(
-            f"QPushButton{{background-color:{self.COLOR_PARTICIPACIONES};color:#fff;font-weight:bold;border:1px solid {self.COLOR_PARTICIPACIONES};border-radius:6px;padding:6px 10px;}}"
-            f"QPushButton:hover{{background-color:{self.COLOR_PARTICIPACIONES}CC;}}"
-        )
+        self.btn_aplicar.setProperty("class", "primary")
         h.addWidget(self.btn_aplicar)
 
-        self.btn_limpiar = QPushButton("🧹 Limpiar")
+        # Botón Limpiar: neutro
+        self.btn_limpiar = QPushButton("Limpiar")
         self.btn_limpiar.clicked.connect(self._clear_filters)
-        self.btn_limpiar.setStyleSheet(
-            f"QPushButton{{background:{self.COLOR_ALT};color:{self.COLOR_TEXT_PRIMARY};border:1px solid {self.COLOR_BORDER};border-radius:6px;padding:6px 10px;}}"
-            f"QPushButton:hover{{border-color:{self.COLOR_PARTICIPACIONES};}}"
-        )
         h.addWidget(self.btn_limpiar)
 
-        self.btn_refrescar = QPushButton("↻ Refrescar Datos")
+        # Botón Refrescar Datos: neutro
+        self.btn_refrescar = QPushButton("Refrescar Datos")
         self.btn_refrescar.clicked.connect(self.reload_data)
-        self.btn_refrescar.setStyleSheet(
-            f"QPushButton{{background:{self.COLOR_ALT};color:{self.COLOR_TEXT_PRIMARY};border:1px solid {self.COLOR_BORDER};border-radius:6px;padding:6px 10px;}}"
-            f"QPushButton:hover{{border-color:{self.COLOR_PARTICIPACIONES};}}"
-        )
         h.addWidget(self.btn_refrescar)
 
         parent_layout.addWidget(box)
 
     # ----------------- Helper para KPIs -----------------
     def _create_kpi_widget(self, label: str, value_object_name: str, money: bool = False) -> QWidget:
-        """Crea un widget de KPI estandarizado (Etiqueta + Valor)."""
+        """Crea un widget de KPI estandarizado (Etiqueta + Valor) con estilo Titanium."""
         w = QWidget()
         v = QVBoxLayout(w)
-        v.setContentsMargins(5, 5, 5, 5)
-        v.setSpacing(0)
+        v.setContentsMargins(6, 4, 6, 4)
+        v.setSpacing(2)
 
         lbl_label = QLabel(label)
-        lbl_label.setStyleSheet(f"font-size:9pt;color:{self.COLOR_TEXT_SECONDARY};font-weight:bold;")
+        lbl_label.setStyleSheet(
+            f"font-size:10px; color:{self.COLOR_TEXT_SECONDARY}; font-weight:bold;"
+        )
         lbl_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
 
         lbl_value = QLabel("...")
         lbl_value.setObjectName(value_object_name)
+
         # Colores según semántica
         color = self.COLOR_TEXT_PRIMARY
         if label in ("Ganadas", "Lotes Ganados", "Monto Adjudicado (Nosotros)"):
@@ -323,7 +306,7 @@ class DashboardWidget(QWidget):
         elif label == "Tasa de Éxito":
             color = self.COLOR_PARTICIPACIONES
 
-        size = "20pt" if label == "Tasa de Éxito" else ("16pt" if not money else "12pt")
+        size = "22px" if label == "Tasa de Éxito" else ("18px" if not money else "14px")
         lbl_value.setStyleSheet(f"font-size:{size}; color:{color}; font-weight:bold;")
         lbl_value.setAlignment(Qt.AlignmentFlag.AlignHCenter)
 
@@ -403,11 +386,6 @@ class DashboardWidget(QWidget):
         self.tbl_resumen_empresa.setHorizontalHeaderLabels(["Empresa", "Participa", "Ganadas", "Monto Adjudicado"])
         self._style_table(self.tbl_resumen_empresa)
 
-        # TreeWidget de ejemplo puede usar el estilo de tabla
-        # (si usas QTreeWidget para otra vista)
-        # self.tree_resumen = QTreeWidget()
-        # self._style_tree(self.tree_resumen)
-
         right_layout.addWidget(self.tbl_resumen_empresa)
 
         # 5. Ensamblar Splitter Principal
@@ -466,13 +444,7 @@ class DashboardWidget(QWidget):
         actions = QHBoxLayout()
         self.btn_fdel = QPushButton("🗑 Eliminar seleccionadas")
         self.btn_fedit = QPushButton("✏️ Editar comentario…")
-        for btn in (self.btn_fdel, self.btn_fedit):
-            btn.setStyleSheet(
-                f"QPushButton{{background:{self.COLOR_ALT};color:{self.COLOR_TEXT_PRIMARY};border:1px solid {self.COLOR_BORDER};border-radius:6px;padding:6px 10px;}}"
-                f"QPushButton:hover{{border-color:{self.COLOR_PARTICIPACIONES};}}"
-            )
-        self.btn_fdel.clicked.connect(self._delete_fallas_selected)
-        self.btn_fedit.clicked.connect(self._edit_fallas_comment)
+        # Botones secundarios, estilo neutro (deja que el tema global mande)
         actions.addWidget(self.btn_fdel)
         actions.addWidget(self.btn_fedit)
         actions.addStretch(1)
@@ -503,22 +475,19 @@ class DashboardWidget(QWidget):
         hh = t.horizontalHeader()
         hh.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 
+        # Dejar que el QSS global Titanium gobierne; solo afinamos gridline
         t.setStyleSheet(
-            f"QTableWidget{{gridline-color:{self.COLOR_BORDER}; background:{self.COLOR_BASE}; "
-            f"alternate-background-color:{self.COLOR_ALT}; selection-background-color:{self.COLOR_PARTICIPACIONES}; "
-            f"selection-color:#ffffff;}} "
-            f"QHeaderView::section{{background:{self.COLOR_ALT}; padding:6px; border:1px solid {self.COLOR_BORDER}; "
-            f"font-weight:600; color:{self.COLOR_TEXT_PRIMARY}; min-height:28px;}}"
+            "QTableWidget {"
+            f"  gridline-color: {self.COLOR_BORDER};"
+            "}"
         )
 
     def _style_tree(self, tree: QTreeWidget):
         tree.setAlternatingRowColors(True)
         tree.setStyleSheet(
-            f"QTreeView{{background:{self.COLOR_BASE}; alternate-background-color:{self.COLOR_ALT}; "
-            f"selection-background-color:{self.COLOR_PARTICIPACIONES}; selection-color:#fff; "
-            f"border:1px solid {self.COLOR_BORDER};}} "
-            f"QHeaderView::section{{background:{self.COLOR_ALT}; color:{self.COLOR_TEXT_PRIMARY}; "
-            f"border:1px solid {self.COLOR_BORDER}; padding:6px;}}"
+            "QTreeView {"
+            f"  gridline-color: {self.COLOR_BORDER};"
+            "}"
         )
 
     # ----------------- Helpers gráficos -----------------
@@ -541,7 +510,7 @@ class DashboardWidget(QWidget):
         ax.spines["right"].set_visible(False)
         ax.spines["left"].set_color(self.COLOR_BORDER)
         ax.spines["bottom"].set_color(self.COLOR_BORDER)
-        ax.grid(axis="x", color="#ffffff22" if self.COLOR_BASE.startswith("#") else "#F5F5F5", linestyle="--")
+        ax.grid(axis="x", color="#E5E7EB", linestyle="--")
         ax.set_axisbelow(True)
 
     # ----------------- Persistencia JSON -----------------
@@ -658,7 +627,7 @@ class DashboardWidget(QWidget):
 
     # ----------------- Pestaña Resumen: Lógica de Renderizado -----------------
     def _render_kpis_and_summaries(self):
-        """Calcula KPIs y puebla Resumen por Empresa y KPIs financieros (adaptado al tema)."""
+        """Calcula KPIs y puebla Resumen por Empresa y KPIs financieros."""
         # ---- KPIs de estado ----
         ganadas, perdidas = self._count_win_lose(self._filtered)
         total_finalizadas = ganadas + perdidas
@@ -692,8 +661,7 @@ class DashboardWidget(QWidget):
                         monto_lote_ganado = float(getattr(lote, "monto_ofertado", 0) or 0)
                         monto_adjudicado_esta_lic_para_nosotros += monto_lote_ganado
 
-            # TOTALES FINANCIEROS (robustos con fallback por lote)
-            # 1) Intentar métodos del modelo si existen
+            # TOTALES FINANCIEROS
             got_any_method_value = False
             try:
                 v = float(lic.get_monto_base_total(solo_participados=True) or 0)
@@ -708,10 +676,8 @@ class DashboardWidget(QWidget):
             except Exception:
                 pass
 
-            # 2) Fallback por lote (si los métodos no existen o retornan 0)
             if not got_any_method_value:
                 for lote in getattr(lic, "lotes", []) or []:
-                    # ¿Participamos en el lote?
                     participa = getattr(lote, "participamos", None)
                     if participa is None:
                         emp = (getattr(lote, "empresa_nuestra", "") or "").strip()
@@ -724,10 +690,8 @@ class DashboardWidget(QWidget):
                         monto_base_total += float(base or 0.0)
                         monto_ofertado_total += float(getattr(lote, "monto_ofertado", 0) or 0.0)
 
-            # Sumar adjudicado de esta licitación (si ganamos lotes)
             monto_adjudicado_nosotros_total_general += monto_adjudicado_esta_lic_para_nosotros
 
-            # Estadísticas por empresa (solo nuestras)
             for nombre_empresa in empresas_participantes_en_lic:
                 stats_emp[nombre_empresa]["participaciones"] += 1
                 if es_ganada_por_nosotros_lic:
@@ -741,22 +705,30 @@ class DashboardWidget(QWidget):
 
         # ---- Pintar KPIs ----
         lbl = self.findChild(QLabel, "lbl_kpi_tasa")
-        if lbl: lbl.setText(f"{tasa_exito:.1f}%")
+        if lbl:
+            lbl.setText(f"{tasa_exito:.1f}%")
         lbl = self.findChild(QLabel, "lbl_kpi_ganadas")
-        if lbl: lbl.setText(f"{ganadas}")
+        if lbl:
+            lbl.setText(f"{ganadas}")
         lbl = self.findChild(QLabel, "lbl_kpi_perdidas")
-        if lbl: lbl.setText(f"{perdidas}")
+        if lbl:
+            lbl.setText(f"{perdidas}")
         lbl = self.findChild(QLabel, "lbl_kpi_lotes_ganados")
-        if lbl: lbl.setText(f"{lotes_ganados_total}")
+        if lbl:
+            lbl.setText(f"{lotes_ganados_total}")
         lbl = self.findChild(QLabel, "lbl_kpi_lotes_total")
-        if lbl: lbl.setText(f"{lotes_adjudicados_total}")
+        if lbl:
+            lbl.setText(f"{lotes_adjudicados_total}")
 
         lbl = self.findChild(QLabel, "lbl_fin_base")
-        if lbl: lbl.setText(f"RD$ {monto_base_total:,.2f}")
+        if lbl:
+            lbl.setText(f"RD$ {monto_base_total:,.2f}")
         lbl = self.findChild(QLabel, "lbl_fin_ofertado")
-        if lbl: lbl.setText(f"RD$ {monto_ofertado_total:,.2f}")
+        if lbl:
+            lbl.setText(f"RD$ {monto_ofertado_total:,.2f}")
         lbl = self.findChild(QLabel, "lbl_fin_adjudicado")
-        if lbl: lbl.setText(f"RD$ {monto_adjudicado_nosotros_total_general:,.2f}")
+        if lbl:
+            lbl.setText(f"RD$ {monto_adjudicado_nosotros_total_general:,.2f}")
 
         # ---- Tabla Resumen por Empresa ----
         t = self.tbl_resumen_empresa
@@ -783,6 +755,7 @@ class DashboardWidget(QWidget):
         hh = t.horizontalHeader()
         hh.setSectionResizeMode(self.COL_RE_EMP, QHeaderView.ResizeMode.Stretch)
         hh.setSectionResizeMode(self.COL_RE_MONTO, QHeaderView.ResizeMode.ResizeToContents)
+
     def _render_resumen_graphs(self):
         """Renderiza los gráficos de Matplotlib para la pestaña Resumen."""
         if not MATPLOTLIB_AVAILABLE:
@@ -973,8 +946,10 @@ class DashboardWidget(QWidget):
                 labels = [it[0] for it in top_items][::-1]
                 counts = [it[1] for it in top_items][::-1]
                 if mpl_cm is not None:
-                    # paleta basada en el acento
-                    cmap = mpl.colors.LinearSegmentedColormap.from_list("accent_fade", [self.COLOR_PARTICIPACIONES + "55", self.COLOR_PARTICIPACIONES])
+                    cmap = mpl.colors.LinearSegmentedColormap.from_list(
+                        "accent_fade",
+                        [self.COLOR_PARTICIPACIONES + "55", self.COLOR_PARTICIPACIONES],
+                    )
                     colors = [cmap(i / max(1, len(counts) - 1)) for i in range(len(counts))]
                 else:
                     colors = [self.COLOR_PARTICIPACIONES] * len(counts)
@@ -1004,12 +979,7 @@ class DashboardWidget(QWidget):
         rnc_map.update({c.get("nombre", ""): c.get("rnc", "N/D") for c in (self._competidores_maestros or [])})
 
         for insti, participante, doc_nombre, es_nuestro, *_ in datos:
-            if doc_nombre == doc_sel and (inst == "Todas" or insti == inst):  
-                # noqa: E999 (si tu editor marca oR, cámbialo por 'or')
-                # Corrige posible typo en algunos editores
-                cond = (inst == "Todas") or (insti == inst)
-                if not cond:
-                    continue
+            if doc_nombre == doc_sel and (inst == "Todas" or insti == inst):
                 tipo = "Nuestra" if es_nuestro else "Competidor"
                 rnc = rnc_map.get(participante, "N/D")
                 row = self.tbl_fdet.rowCount()

@@ -62,9 +62,14 @@ class TabCompetitors(QWidget):
     COL_OFERTA_MONTO = 2
     COL_OFERTA_ADJUDICADA = 3
 
-    # Color para fila ganadora
-    COLOR_GANADOR = QColor("#d4edda")  # Verde claro
+    # Titanium Construct colors for offer highlighting
+    COLOR_GANADOR = QColor("#D1FAE5")      # Success green for winner
     BRUSH_GANADOR = QBrush(COLOR_GANADOR)
+    TEXT_GANADOR = QColor("#065F46")       # Dark green text
+    
+    COLOR_NUESTRA = QColor("#EEF2FF")      # Indigo for our company
+    BRUSH_NUESTRA = QBrush(COLOR_NUESTRA)
+    TEXT_NUESTRA = QColor("#4F46E5")       # Indigo text
 
     def __init__(self, licitacion: Licitacion, db: DatabaseAdapter, parent_window: LicitationDetailsWindow):
         super().__init__(parent_window)
@@ -91,6 +96,8 @@ class TabCompetitors(QWidget):
         self._build_ui()
         self._connect_signals()
         self._update_button_states()
+        self._loading = False
+
 
     def _build_ui(self):
         """Construye la interfaz de la pestaña con QSplitter."""
@@ -168,6 +175,7 @@ class TabCompetitors(QWidget):
         self.btn_edit_comp.setIcon(icons_left['edit'])
         self.btn_del_comp = QPushButton(" Eliminar")
         self.btn_del_comp.setIcon(icons_left['delete'])
+        self.btn_del_comp.setProperty("class", "danger")  # Mark as danger action
         btn_analizar_paq = QPushButton(" Analizar Paquetes...")
         btn_analizar_paq.setIcon(icons_left['analyze_pkg'])
         btn_grid_comp.addWidget(self.btn_edit_comp, 1, 0)
@@ -179,6 +187,7 @@ class TabCompetitors(QWidget):
         btn_edit_params.setIcon(icons_left['edit_params'])
         btn_ejecutar_eval = QPushButton(" Ejecutar Evaluación")
         btn_ejecutar_eval.setIcon(icons_left['run_eval'])
+        btn_ejecutar_eval.setProperty("class", "primary")  # Mark as primary action
         btn_analizar_fasea = QPushButton(" Análisis de Fallas Fase A…")
         # Usa icono nativo; si manejas un dict icons_left, puedes cambiar esta línea por icons_left['analyze_fail']
         btn_analizar_fasea.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxWarning))
@@ -253,6 +262,7 @@ class TabCompetitors(QWidget):
         self.btn_edit_oferta.setIcon(icons_right['edit'])
         self.btn_del_oferta = QPushButton(" Eliminar Oferta")
         self.btn_del_oferta.setIcon(icons_right['delete'])
+        self.btn_del_oferta.setProperty("class", "danger")  # Mark as danger action
 
         btn_layout_ofertas.addWidget(self.btn_add_oferta)
         btn_layout_ofertas.addWidget(self.btn_edit_oferta)
@@ -292,16 +302,20 @@ class TabCompetitors(QWidget):
         self.table_ofertas.itemSelectionChanged.connect(self._on_oferta_select)
 
     def load_data(self):
-        """Carga los datos iniciales de la licitación en los widgets de esta pestaña."""
         print("TabCompetitors: Cargando datos...")
-        self._actualizar_tree_competidores()
-        self._rebuild_ganadores_ui()
+        self._loading = True
+        try:
+            self._actualizar_tree_competidores()
+            self._rebuild_ganadores_ui()
 
-        if self.table_competidores.rowCount() > 0:
-            self.table_competidores.selectRow(0)
-            self._on_competidor_select()
-        else:
-            self._on_competidor_select()
+            if self.table_competidores.rowCount() > 0:
+                self.table_competidores.selectRow(0)
+                self._on_competidor_select()
+            else:
+                self._on_competidor_select()
+        finally:
+            self._loading = False
+
         print("TabCompetitors: Datos cargados.")
 
     def collect_data(self) -> bool:
@@ -417,6 +431,7 @@ class TabCompetitors(QWidget):
 
         if is_ganador:
             item.setBackground(self.BRUSH_GANADOR)
+            item.setForeground(self.TEXT_GANADOR)
             if bold:
                 item.setFont(bold)
 
@@ -503,7 +518,11 @@ class TabCompetitors(QWidget):
             combo.setCurrentIndex(idx_pre if idx_pre >= 0 else 0)  # Default a "Sin ganador" si no se encuentra
 
             self.layout_form_ganadores.addRow(label, combo)
-            self.combo_ganador_por_lote[lote_num_key] = combo  # Guardar referencia al combo
+            self.combo_ganador_por_lote[lote_num_key] = combo
+            combo.currentIndexChanged.connect(
+                lambda _, k=lote_num_key, c=combo: self._on_ganador_changed(k, c)
+            )
+  # Guardar referencia al combo
 
     def _aplicar_ganadores_al_modelo(self):
         """
@@ -635,6 +654,9 @@ class TabCompetitors(QWidget):
                     return
 
                 self.licitacion.oferentes_participantes.append(nuevo_oferente)
+                if hasattr(self.parent_window, "mark_dirty"):
+                    self.parent_window.mark_dirty("TabCompetitors.agregar_competidor")
+
                 self._actualizar_tree_competidores()
                 self._rebuild_ganadores_ui()
                 print(f"TabCompetitors: Competidor '{nuevo_oferente.nombre}' agregado.")
@@ -670,6 +692,9 @@ class TabCompetitors(QWidget):
 
                 competidor.nombre = oferente_actualizado.nombre
                 competidor.comentario = oferente_actualizado.comentario
+                if hasattr(self.parent_window, "mark_dirty"):
+                    self.parent_window.mark_dirty("TabCompetitors.editar_competidor")
+
 
                 self._actualizar_tree_competidores()
                 self._rebuild_ganadores_ui()
@@ -699,6 +724,9 @@ class TabCompetitors(QWidget):
         if reply == QMessageBox.StandardButton.Yes:
             try:
                 self.licitacion.oferentes_participantes.remove(competidor)
+                if hasattr(self.parent_window, "mark_dirty"):
+                    self.parent_window.mark_dirty("TabCompetitors.eliminar_competidor")
+
                 self._actualizar_tree_competidores()
                 # Limpiar la tabla de ofertas ya que el competidor ya no existe
                 self._actualizar_tree_ofertas(None)
@@ -732,6 +760,9 @@ class TabCompetitors(QWidget):
                 nueva_oferta_dict = dialogo.get_oferta_dict()
                 if nueva_oferta_dict:
                     competidor.ofertas_por_lote.append(nueva_oferta_dict)
+                    if hasattr(self.parent_window, "mark_dirty"):
+                        self.parent_window.mark_dirty("TabCompetitors.agregar_oferta")
+
                     self._actualizar_tree_ofertas(competidor)
                     self._rebuild_ganadores_ui()
                     print(f"TabCompetitors: Oferta agregada para lote {nueva_oferta_dict['lote_numero']}.")
@@ -793,6 +824,9 @@ class TabCompetitors(QWidget):
                 oferta_actualizada_dict = dialogo.get_oferta_dict()
                 if oferta_actualizada_dict:
                     oferta_dict_original.update(oferta_actualizada_dict)
+                    if hasattr(self.parent_window, "mark_dirty"):
+                        self.parent_window.mark_dirty("TabCompetitors.editar_oferta")
+
                     self._actualizar_tree_ofertas(competidor)
                     self._rebuild_ganadores_ui()
                     print(f"TabCompetitors: Oferta de lote {lote_num_to_edit} actualizada.")
@@ -833,6 +867,8 @@ class TabCompetitors(QWidget):
             final_count = len(competidor.ofertas_por_lote)
 
             if final_count < initial_count:
+                if hasattr(self.parent_window, "mark_dirty"):
+                    self.parent_window.mark_dirty("TabCompetitors.eliminar_oferta")
                 # Recargar la tabla de ofertas
                 self._actualizar_tree_ofertas(competidor)
                 # Reconstruir UI ganadores (este competidor ya no será opción para este lote)
@@ -1308,6 +1344,7 @@ class TabCompetitors(QWidget):
         self._actualizar_tree_competidores()
         self._rebuild_ganadores_ui()
     # --- Método principal: Ejecutar Evaluación ---
+
     def _ejecutar_evaluacion(self):
         print("[DEBUG][EjecutarEval] Iniciando ejecución directa...")
         # Sincronizar nuestras ofertas desde los lotes antes de evaluar
@@ -1387,7 +1424,6 @@ class TabCompetitors(QWidget):
             datos_param=datos
         )
         dlg.exec()
-
     # En la clase TabCompetitors, añade este método:
 
     def _abrir_analisis_fase_a(self):
@@ -1412,3 +1448,23 @@ class TabCompetitors(QWidget):
         # Si quieres abrirla maximizada:
         # dlg.setWindowState(dlg.windowState() | Qt.WindowState.WindowMaximized)
         dlg.exec()
+
+
+    def _on_ganador_changed(self, lote_key: str, combo: QComboBox):
+        # Evitar ruido durante carga inicial
+        if getattr(self, "_loading", False):
+            return
+
+        valor = combo.currentData()
+
+        print(
+            f"[CHANGE][TabCompetitors] "
+            f"Ganador cambiado en lote {lote_key} -> {valor}"
+        )
+
+        # 🧷 Marcar como dirty (NO guardar aquí)
+        if hasattr(self.parent_window, "mark_dirty"):
+            self.parent_window.mark_dirty(
+                f"TabCompetitors.ganador:{lote_key}"
+            )
+        
