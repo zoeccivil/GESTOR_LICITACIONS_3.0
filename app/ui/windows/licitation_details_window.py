@@ -265,7 +265,7 @@ class LicitationDetailsWindow(QDialog):
         lc.addWidget(self.combo_kit)
 
         # =========================================================
-        # D. Cambios Pendientes (Logger Visual)
+        # D. Cambios Pendientes (Logger Visual COLAPSABLE)
         # =========================================================
         self.boxD = QGroupBox("D. Cambios Pendientes")
         self.boxD.setMaximumWidth(300)
@@ -273,6 +273,30 @@ class LicitationDetailsWindow(QDialog):
         ld = QVBoxLayout(self.boxD)
         ld.setContentsMargins(6, 6, 6, 6)
         ld.setSpacing(4)
+
+        # --- Header del logger (título + botón)
+        header_row = QHBoxLayout()
+        header_row.setContentsMargins(0, 0, 0, 0)
+
+        lbl_title = QLabel("Cambios pendientes")
+        lbl_title.setStyleSheet("font-weight: 600;")
+        header_row.addWidget(lbl_title)
+
+        header_row.addStretch()
+
+        self.btn_toggle_logger = QPushButton("▸")
+        self.btn_toggle_logger.setFixedSize(22, 22)
+        self.btn_toggle_logger.setToolTip("Mostrar / ocultar cambios")
+        self.btn_toggle_logger.setCheckable(True)
+        self.btn_toggle_logger.setChecked(False)
+        header_row.addWidget(self.btn_toggle_logger)
+
+        ld.addLayout(header_row)
+
+        # --- Contenedor colapsable
+        self.logger_container = QWidget()
+        logger_layout = QVBoxLayout(self.logger_container)
+        logger_layout.setContentsMargins(0, 0, 0, 0)
 
         self.list_change_log = QListWidget()
         self.list_change_log.setMinimumHeight(90)
@@ -282,7 +306,21 @@ class LicitationDetailsWindow(QDialog):
             "Cambios realizados que aún no se han guardado en la base de datos"
         )
 
-        ld.addWidget(self.list_change_log)
+        logger_layout.addWidget(self.list_change_log)
+        ld.addWidget(self.logger_container)
+
+        # --- Estado inicial: colapsado
+        self.logger_container.setVisible(False)
+        self.boxD.setMaximumHeight(60)
+
+        # --- Toggle logic
+        def _toggle_logger(expanded: bool):
+            self.logger_container.setVisible(expanded)
+            self.btn_toggle_logger.setText("▾" if expanded else "▸")
+            self.boxD.setMaximumHeight(160 if expanded else 60)
+
+        self.btn_toggle_logger.toggled.connect(_toggle_logger)
+
 
         # =========================================================
         # Layout compacto (GRID)
@@ -1203,9 +1241,11 @@ class LicitationDetailsWindow(QDialog):
 
 
     def _enable_save_continue_button(self):
-        if self._edit_lock or self._saving:
+        # 🔒 Si hay guardado activo o locks, deshabilitar
+        if self._saving or self._edit_locks:
             self.btn_save_continue.setEnabled(False)
             return
+
         self.btn_save_continue.setText("Guardar y Continuar")
         self.btn_save_continue.setEnabled(True)
 
@@ -1322,42 +1362,46 @@ class LicitationDetailsWindow(QDialog):
 
 
     def _perform_save(self, close_after: bool = False) -> bool:
+        # 🔒 Evitar doble guardado simultáneo
         if self._saving:
             print("[LOCK] Guardado ya en progreso")
             return False
 
-        if self._edit_lock:
-            print("[LOCK] Edición bloqueada, no se guarda")
+        # 🔒 Evitar guardar si hay locks activos
+        if self._edit_locks:
+            print("[LOCK] Edición bloqueada, no se guarda:", self._edit_locks)
             return False
 
-        # 1. Recolectar datos
+        # 1. Recolectar datos desde las pestañas
         tabs = [self.tab_general, self.tab_lotes, self.tab_competitors]
         for tab in tabs:
             if hasattr(tab, "collect_data"):
                 if tab.collect_data() is False:
                     return False
 
-        # 2. Normalizar
+        # 2. Normalizar modelo
         self._normalize_model()
 
-        # 3. Validar
+        # 3. Validar antes de guardar
         if not self._validate_before_save():
             return False
 
-        # 4. Snapshot
+        # 4. Snapshot para detectar cambios reales
         new_snapshot = self._snapshot_model()
         if new_snapshot == self._last_snapshot:
             print("[INFO] No hay cambios reales, se omite guardado")
             self._dirty = False
             return True
 
-        # 5. Guardar
+        # 5. Guardar en base de datos
         try:
             self._saving = True
+
             save_return = self.db.save_licitacion(self.licitacion)
             self._ensure_licitacion_id_after_save(save_return)
             self._persistir_ganadores_por_lote()
 
+            # Actualizar snapshot y estado
             self._last_snapshot = new_snapshot
             self._dirty = False
 
