@@ -1317,6 +1317,7 @@ class TabCompetitors(QWidget):
         self._actualizar_tree_competidores()
         self._rebuild_ganadores_ui()
     # --- Método principal: Ejecutar Evaluación ---
+
     def _ejecutar_evaluacion(self):
         print("[DEBUG][EjecutarEval] Iniciando ejecución directa...")
         # Sincronizar nuestras ofertas desde los lotes antes de evaluar
@@ -1396,7 +1397,6 @@ class TabCompetitors(QWidget):
             datos_param=datos
         )
         dlg.exec()
-
     # En la clase TabCompetitors, añade este método:
 
     def _abrir_analisis_fase_a(self):
